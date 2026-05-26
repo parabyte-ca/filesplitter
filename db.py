@@ -62,11 +62,17 @@ def init_db() -> None:
         CREATE INDEX IF NOT EXISTS idx_jobs_file_id ON jobs(file_id);
         CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
     """)
-    # Add resolution columns if this is an existing DB from before v0.8.9
-    conn.execute("ALTER TABLE files ADD COLUMN IF NOT EXISTS width INTEGER DEFAULT 0")
-    conn.execute("ALTER TABLE files ADD COLUMN IF NOT EXISTS height INTEGER DEFAULT 0")
-    # Add savings column if this is an existing DB from before v0.9.0
-    conn.execute("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS saved_bytes INTEGER DEFAULT 0")
+    # Add columns introduced after the initial schema — try/except handles
+    # both old SQLite (no IF NOT EXISTS on ALTER TABLE) and existing DBs
+    for _ddl in [
+        "ALTER TABLE files ADD COLUMN width INTEGER DEFAULT 0",
+        "ALTER TABLE files ADD COLUMN height INTEGER DEFAULT 0",
+        "ALTER TABLE jobs ADD COLUMN saved_bytes INTEGER DEFAULT 0",
+    ]:
+        try:
+            conn.execute(_ddl)
+        except sqlite3.OperationalError:
+            pass  # column already exists
     conn.commit()
     # Backfill saved_bytes from log_tail for encode jobs that pre-date v0.9.0
     rows = conn.execute(
