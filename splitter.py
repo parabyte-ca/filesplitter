@@ -1,5 +1,6 @@
 import os
 import subprocess
+import threading
 import logging
 from collections.abc import Callable
 
@@ -19,11 +20,12 @@ def _format_ts(seconds: float) -> str:
 def split_by_scenes(
     input_path: str,
     progress_cb: Callable[[float, str], None] | None = None,
+    cancel_event: threading.Event | None = None,
 ) -> list[str] | None:
     """
     Detect scenes and split input_path into scene files via stream copy.
     On success, verifies all output files, deletes original, returns list of output paths.
-    Returns None on failure.
+    Returns None on failure or cancellation (check cancel_event.is_set() to distinguish).
     """
     probe = codec_detector.probe(input_path)
     if probe is None:
@@ -31,12 +33,17 @@ def split_by_scenes(
         return None
 
     if progress_cb:
-        progress_cb(2.0, "Detecting scenes...")
+        progress_cb(2.0, "Detecting scenes…")
 
-    scene_cuts = scene_detector.detect_scenes(input_path)
+    scene_cuts = scene_detector.detect_scenes(input_path, cancel_event=cancel_event)
+
+    if cancel_event and cancel_event.is_set():
+        return None
 
     if not scene_cuts:
         logger.warning("No scene changes detected in %s — skipping split", input_path)
+        if progress_cb:
+            progress_cb(0, "ERROR: No scene changes detected in this file")
         return None
 
     stem, ext = os.path.splitext(input_path)
@@ -49,6 +56,11 @@ def split_by_scenes(
     total = len(segments)
 
     for i, (start, end) in enumerate(segments):
+        if cancel_event and cancel_event.is_set():
+            logger.info("Split cancelled for %s after %d/%d segments", input_path, i, total)
+            _cleanup_files(output_paths)
+            return None
+
         out_path = os.path.join(directory, f"{os.path.basename(stem)}_scene_{i + 1:03d}{ext}")
         output_paths.append(out_path)
 
@@ -70,31 +82,35 @@ def split_by_scenes(
 
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=7200)
         if result.returncode != 0:
-            logger.error("Split failed segment %d: %s", i + 1, result.stderr[-500:])
+            err_msg = result.stderr.strip()[-300:] if result.stderr.strip() else "ffmpeg split failed"
+            logger.error("Split failed segment %d: %s", i + 1, err_msg)
+            pct = 5.0 + i / total * 90.0
+            if progress_cb:
+                progress_cb(pct, f"ERROR: Segment {i + 1}/{total} failed — {err_msg}")
             _cleanup_files(output_paths)
             return None
 
+        pct = 5.0 + (i + 1) / total * 90.0
         if progress_cb:
-            pct = 5.0 + (i + 1) / total * 90.0
             progress_cb(pct, f"Split {i + 1}/{total}: {os.path.basename(out_path)}")
 
-    # Verify all outputs
     if progress_cb:
-        progress_cb(96.0, "Verifying scene files...")
+        progress_cb(96.0, "Verifying scene files…")
 
     for path in output_paths:
         if not codec_detector.verify_file(path):
-            logger.error("Verification failed: %s", path)
+            err_msg = f"Verification failed: {os.path.basename(path)}"
+            logger.error(err_msg)
+            if progress_cb:
+                progress_cb(96.0, f"ERROR: {err_msg}")
             _cleanup_files(output_paths)
             return None
 
-    # Delete original
     try:
         os.unlink(input_path)
         logger.info("Deleted original: %s", input_path)
     except OSError as exc:
         logger.error("Could not delete original %s: %s", input_path, exc)
-        # Don't fail — output files are valid
 
     if progress_cb:
         progress_cb(100.0, f"Done — {total} scenes created")
