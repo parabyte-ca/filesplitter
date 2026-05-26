@@ -12,45 +12,54 @@ def _now() -> str:
 
 def init_db() -> None:
     os.makedirs(os.path.dirname(config.DATABASE_PATH), exist_ok=True)
-    with connect() as conn:
-        conn.executescript("""
-            CREATE TABLE IF NOT EXISTS files (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                path TEXT UNIQUE NOT NULL,
-                filename TEXT NOT NULL,
-                size_bytes INTEGER,
-                duration_sec REAL,
-                codec TEXT,
-                is_anthology INTEGER DEFAULT 0,
-                status TEXT DEFAULT 'pending',
-                error_msg TEXT,
-                discovered_at TEXT,
-                updated_at TEXT
-            );
+    # WAL must be set outside executescript (which auto-commits)
+    conn = sqlite3.connect(config.DATABASE_PATH)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=5000")
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS files (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            path TEXT UNIQUE NOT NULL,
+            filename TEXT NOT NULL,
+            size_bytes INTEGER,
+            duration_sec REAL,
+            codec TEXT,
+            is_anthology INTEGER DEFAULT 0,
+            status TEXT DEFAULT 'pending',
+            error_msg TEXT,
+            discovered_at TEXT,
+            updated_at TEXT
+        );
 
-            CREATE TABLE IF NOT EXISTS jobs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                file_id INTEGER REFERENCES files(id),
-                job_type TEXT NOT NULL,
-                status TEXT DEFAULT 'queued',
-                progress_pct REAL DEFAULT 0,
-                target_resolution TEXT DEFAULT 'original',
-                log_tail TEXT,
-                started_at TEXT,
-                finished_at TEXT
-            );
+        CREATE TABLE IF NOT EXISTS jobs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            file_id INTEGER REFERENCES files(id),
+            job_type TEXT NOT NULL,
+            status TEXT DEFAULT 'queued',
+            progress_pct REAL DEFAULT 0,
+            target_resolution TEXT DEFAULT 'original',
+            log_tail TEXT,
+            started_at TEXT,
+            finished_at TEXT
+        );
 
-            CREATE TABLE IF NOT EXISTS settings (
-                key TEXT PRIMARY KEY,
-                value TEXT
-            );
-        """)
+        CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_files_status ON files(status);
+        CREATE INDEX IF NOT EXISTS idx_jobs_file_id ON jobs(file_id);
+        CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
+    """)
+    conn.close()
 
 
 @contextmanager
 def connect():
     conn = sqlite3.connect(config.DATABASE_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout=5000")
     try:
         yield conn
         conn.commit()
@@ -93,6 +102,11 @@ def set_file_status(file_id: int, status: str, error_msg: str = None) -> None:
             "UPDATE files SET status=?, error_msg=?, updated_at=? WHERE id=?",
             (status, error_msg, _now(), file_id),
         )
+
+
+def get_file_by_path(path: str) -> sqlite3.Row:
+    with connect() as conn:
+        return conn.execute("SELECT * FROM files WHERE path=?", (path,)).fetchone()
 
 
 def get_file(file_id: int) -> sqlite3.Row:
@@ -178,16 +192,22 @@ def set_job_status(job_id: int, status: str) -> None:
 
 
 def dequeue_next_job() -> sqlite3.Row | None:
+    """Atomically claim the next queued job. Safe for concurrent callers."""
     with connect() as conn:
-        job = conn.execute(
-            "SELECT * FROM jobs WHERE status='queued' ORDER BY id LIMIT 1"
+        row = conn.execute(
+            "SELECT id FROM jobs WHERE status='queued' ORDER BY id LIMIT 1"
         ).fetchone()
-        if job:
-            conn.execute(
-                "UPDATE jobs SET status='running', started_at=? WHERE id=?",
-                (_now(), job["id"]),
-            )
-        return job
+        if row is None:
+            return None
+        # Conditional UPDATE guards against concurrent dequeue — only one
+        # thread's UPDATE will find status='queued' and win.
+        updated = conn.execute(
+            "UPDATE jobs SET status='running', started_at=? WHERE id=? AND status='queued'",
+            (_now(), row["id"]),
+        ).rowcount
+        if updated == 0:
+            return None
+        return conn.execute("SELECT * FROM jobs WHERE id=?", (row["id"],)).fetchone()
 
 
 # --- Settings ---

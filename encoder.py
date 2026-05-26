@@ -30,8 +30,10 @@ def encode_to_x265(
     Returns True on success, False on failure.
     progress_cb(pct, log_line) is called periodically with 0–100 progress.
     """
-    crf = crf or config.X265_CRF
-    preset = preset or config.X265_PRESET
+    if crf is None:
+        crf = config.X265_CRF
+    if preset is None:
+        preset = config.X265_PRESET
 
     probe = codec_detector.probe(input_path)
     if probe is None:

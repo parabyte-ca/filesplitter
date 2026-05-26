@@ -40,6 +40,13 @@ def scan_all() -> dict:
                 full_path = os.path.join(root, fname)
 
                 try:
+                    # Skip probing files already finished — avoids re-scanning
+                    # large completed libraries on every scan.
+                    existing = db.get_file_by_path(full_path)
+                    if existing and existing["status"] in ("done", "skipped"):
+                        skipped += 1
+                        continue
+
                     info = codec_detector.probe(full_path)
                     if info is None:
                         logger.warning("ffprobe failed: %s", full_path)

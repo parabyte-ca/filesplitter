@@ -13,6 +13,14 @@ COPY . .
 
 RUN mkdir -p /app/data
 
+ARG VERSION=unknown
+LABEL org.opencontainers.image.title="FileSplitter" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.description="Video encoder and scene splitter for media libraries"
+
 EXPOSE 4250
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:4250/api/version')" || exit 1
 
 CMD ["python", "app.py"]

@@ -204,7 +204,7 @@
 <header>
   <div>
     <h1>FileSplitter</h1>
-    <div class="subtitle">Video encoder &amp; scene splitter</div>
+    <div class="subtitle">Video encoder &amp; scene splitter &nbsp;·&nbsp; v{{ version }}</div>
   </div>
   <div class="spacer"></div>
   <span id="queue-indicator" class="indicator indicator-green" title="Queue running"></span>
@@ -514,11 +514,8 @@ async function queueJob(fileId, type, resolution) {
 }
 
 async function skipFile(fileId) {
-  await fetch('/api/queue', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({file_id: fileId, job_type: 'skip'}),
-  });
+  const r = await fetch(`/api/skip/${fileId}`, { method: 'POST' });
+  if (r.ok) await loadFiles();
 }
 
 document.getElementById('btn-scan').onclick = async () => {
@@ -531,7 +528,7 @@ document.getElementById('btn-pause').onclick = async () => {
 };
 
 document.getElementById('btn-queue-all-encode').onclick = async () => {
-  const pending = allFiles.filter(f => f.status === 'pending' && f.codec !== 'hevc' && !f.is_anthology);
+  const pending = allFiles.filter(f => f.status === 'pending' && f.codec !== 'hevc');
   for (const f of pending) await queueJob(f.id, 'encode');
   await loadFiles();
 };

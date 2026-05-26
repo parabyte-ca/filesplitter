@@ -2,6 +2,7 @@ import json
 import logging
 import time
 import threading
+from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request, Response, stream_with_context
 
@@ -9,6 +10,8 @@ import config
 import db
 import scanner
 import worker
+
+_VERSION = (Path(__file__).parent / "VERSION").read_text().strip()
 
 logging.basicConfig(
     level=logging.INFO,
@@ -26,6 +29,8 @@ _scan_status = {"running": False, "last_result": None}
 
 def _sse_stream():
     while True:
+        if request.environ.get("werkzeug.is_closed") or request.environ.get("wsgi.input_terminated"):
+            break
         data = {
             "stats": db.get_stats(),
             "active_jobs": [
@@ -41,6 +46,7 @@ def _sse_stream():
             ],
             "paused": worker.is_paused(),
             "scan_running": _scan_status["running"],
+            "version": _VERSION,
         }
         yield f"data: {json.dumps(data)}\n\n"
         time.sleep(2)
@@ -63,6 +69,7 @@ def index():
         "index.html",
         media_paths=config.MEDIA_PATHS,
         flask_port=config.FLASK_PORT,
+        version=_VERSION,
     )
 
 
@@ -120,6 +127,22 @@ def api_queue():
     job_id = db.create_job(file_id, job_type, target_resolution)
     db.set_file_status(file_id, "queued")
     return jsonify({"ok": True, "job_id": job_id})
+
+
+@app.post("/api/skip/<int:file_id>")
+def api_skip(file_id: int):
+    file_row = db.get_file(file_id)
+    if file_row is None:
+        return jsonify({"ok": False, "msg": "File not found"}), 404
+    if file_row["status"] in ("processing", "queued"):
+        return jsonify({"ok": False, "msg": "Cannot skip a file that is queued or processing"}), 409
+    db.set_file_status(file_id, "skipped")
+    return jsonify({"ok": True})
+
+
+@app.get("/api/version")
+def api_version():
+    return jsonify({"version": _VERSION})
 
 
 @app.post("/api/queue/pause")
