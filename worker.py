@@ -109,7 +109,7 @@ def _run_job(job: dict) -> None:
             elif success:
                 orig_bytes = file_row["size_bytes"] or 0
                 new_bytes = os.path.getsize(input_path)
-                db.update_file_size(file_id, new_bytes)
+                db.update_file_size(file_id, new_bytes, codec="hevc")
                 saved = max(0, orig_bytes - new_bytes)
                 savings_pct = (saved / orig_bytes) * 100 if orig_bytes else 0
                 done_msg = (
