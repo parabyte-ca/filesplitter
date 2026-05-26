@@ -2,6 +2,7 @@ import os
 import subprocess
 import uuid
 import logging
+import threading
 from collections.abc import Callable
 
 import config
@@ -37,14 +38,12 @@ def _scale_filter(resolution: str) -> list[str]:
 
 
 def _build_codec_args(backend: str, crf: int, preset: str) -> list[str]:
-    """Return the ffmpeg codec/quality args for the chosen backend."""
     if backend == "nvenc":
         if not NVENC_AVAILABLE:
             logger.warning("hevc_nvenc not available — falling back to libx265")
             return ["-c:v", "libx265", "-crf", str(crf), "-preset", "medium"]
         nvenc_preset = preset if preset in _NVENC_PRESETS else "medium"
         return ["-c:v", "hevc_nvenc", "-rc", "vbr", "-cq", str(crf), "-preset", nvenc_preset]
-    # Default: CPU libx265
     cpu_preset = preset if preset in _CPU_PRESETS else "medium"
     return ["-c:v", "libx265", "-crf", str(crf), "-preset", cpu_preset]
 
@@ -55,11 +54,12 @@ def encode_to_x265(
     crf: int = None,
     preset: str = None,
     progress_cb: Callable[[float, str], None] | None = None,
+    cancel_event: threading.Event | None = None,
 ) -> bool:
     """
     Re-encode input_path to HEVC, replacing the original on success.
-    Uses libx265 (CPU) or hevc_nvenc (GPU) depending on ENCODER_BACKEND config.
-    Returns True on success, False on failure.
+    Returns True on success, False on failure or cancellation.
+    Cancellation is signalled via cancel_event; check cancel_event.is_set() to distinguish.
     """
     if crf is None:
         crf = config.X265_CRF
@@ -110,6 +110,7 @@ def encode_to_x265(
 
         duration_us = int(probe.duration_sec * 1_000_000)
         log_lines: list[str] = []
+        current_pct = 0.0
 
         for line in proc.stdout:
             line = line.strip()
@@ -117,12 +118,23 @@ def encode_to_x265(
             if len(log_lines) > 50:
                 log_lines.pop(0)
 
+            if cancel_event and cancel_event.is_set():
+                logger.info("Encode cancelled for %s", input_path)
+                proc.terminate()
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait()
+                _cleanup(tmp_path)
+                return False
+
             if line.startswith("out_time_us=") and duration_us > 0:
                 try:
                     elapsed_us = int(line.split("=")[1])
-                    pct = min(100.0, elapsed_us / duration_us * 100)
+                    current_pct = min(100.0, elapsed_us / duration_us * 100)
                     if progress_cb:
-                        progress_cb(pct, "\n".join(log_lines[-10:]))
+                        progress_cb(current_pct, "\n".join(log_lines[-10:]))
                 except ValueError:
                     pass
 
@@ -130,13 +142,19 @@ def encode_to_x265(
 
         if proc.returncode != 0:
             stderr = proc.stderr.read()
-            logger.error("ffmpeg encode failed: %s", stderr[-500:])
+            err_msg = stderr.strip()[-300:] if stderr.strip() else "ffmpeg encode failed (no stderr)"
+            logger.error("ffmpeg encode failed: %s", err_msg)
+            if progress_cb:
+                progress_cb(current_pct, f"ERROR: {err_msg}")
             _cleanup(tmp_path)
             return False
 
         if not codec_detector.verify_file(tmp_path, expected_codec="hevc",
                                           ref_duration=probe.duration_sec):
-            logger.error("Verification failed for encoded file: %s", tmp_path)
+            err_msg = "Output file verification failed (codec or duration mismatch)"
+            logger.error("%s: %s", err_msg, tmp_path)
+            if progress_cb:
+                progress_cb(current_pct, f"ERROR: {err_msg}")
             _cleanup(tmp_path)
             return False
 
@@ -146,6 +164,8 @@ def encode_to_x265(
 
     except Exception as exc:
         logger.error("Encode error for %s: %s", input_path, exc)
+        if progress_cb:
+            progress_cb(0, f"ERROR: {exc}")
         _cleanup(tmp_path)
         return False
 

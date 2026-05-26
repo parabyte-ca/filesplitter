@@ -10,11 +10,10 @@ import splitter
 logger = logging.getLogger(__name__)
 
 _executor: ThreadPoolExecutor | None = None
-_lock = threading.Lock()
 _paused = threading.Event()
 _paused.set()  # not paused by default
 
-_queue_running = False
+_cancel_events: dict[int, threading.Event] = {}
 
 
 def start(num_workers: int = None) -> None:
@@ -37,6 +36,16 @@ def resume() -> None:
 
 def is_paused() -> bool:
     return not _paused.is_set()
+
+
+def cancel_job(job_id: int) -> bool:
+    """Signal a running job to cancel. Returns True if the signal was sent."""
+    event = _cancel_events.get(job_id)
+    if event:
+        event.set()
+        logger.info("Cancel signal sent for job %d", job_id)
+        return True
+    return False
 
 
 def _queue_loop() -> None:
@@ -66,7 +75,14 @@ def _run_job(job: dict) -> None:
     db.set_file_status(file_id, "processing")
     db.set_job_status(job_id, "running")
 
+    cancel_event = threading.Event()
+    _cancel_events[job_id] = cancel_event
+
+    # Track the last progress log so we can use it as the error message on failure.
+    last_log = [""]
+
     def progress_cb(pct: float, log_line: str) -> None:
+        last_log[0] = log_line
         db.update_job_progress(job_id, pct, log_line)
 
     try:
@@ -75,23 +91,38 @@ def _run_job(job: dict) -> None:
                 input_path,
                 target_resolution=target_res,
                 progress_cb=progress_cb,
+                cancel_event=cancel_event,
             )
-            if success:
+            if cancel_event.is_set():
+                db.set_file_status(file_id, "pending")
+                db.set_job_status(job_id, "cancelled")
+                db.update_job_progress(job_id, 0, "Cancelled by user")
+            elif success:
                 db.set_file_status(file_id, "done")
                 db.set_job_status(job_id, "done")
                 db.update_job_progress(job_id, 100.0, "Encoding complete")
             else:
-                db.set_file_status(file_id, "error", "Encoding failed")
+                err = last_log[0][:300] if last_log[0] else "Encoding failed"
+                db.set_file_status(file_id, "error", err)
                 db.set_job_status(job_id, "error")
 
         elif job_type == "split":
-            scenes = splitter.split_by_scenes(input_path, progress_cb=progress_cb)
-            if scenes is not None:
+            scenes = splitter.split_by_scenes(
+                input_path,
+                progress_cb=progress_cb,
+                cancel_event=cancel_event,
+            )
+            if cancel_event.is_set():
+                db.set_file_status(file_id, "pending")
+                db.set_job_status(job_id, "cancelled")
+                db.update_job_progress(job_id, 0, "Cancelled by user")
+            elif scenes is not None:
                 db.set_file_status(file_id, "done")
                 db.set_job_status(job_id, "done")
                 db.update_job_progress(job_id, 100.0, f"{len(scenes)} scenes created")
             else:
-                db.set_file_status(file_id, "error", "Splitting failed or no scenes")
+                err = last_log[0][:300] if last_log[0] else "Splitting failed or no scenes found"
+                db.set_file_status(file_id, "error", err)
                 db.set_job_status(job_id, "error")
 
         else:
@@ -100,5 +131,7 @@ def _run_job(job: dict) -> None:
 
     except Exception as exc:
         logger.exception("Job %d failed: %s", job_id, exc)
-        db.set_file_status(file_id, "error", str(exc))
+        db.set_file_status(file_id, "error", str(exc)[:300])
         db.set_job_status(job_id, "error")
+    finally:
+        _cancel_events.pop(job_id, None)

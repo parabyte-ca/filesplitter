@@ -145,6 +145,35 @@ def api_version():
     return jsonify({"version": _VERSION})
 
 
+def _cancel_job_by_id(job_id: int):
+    """Shared cancel logic used by both cancel endpoints."""
+    job = db.get_job(job_id)
+    if job is None:
+        return jsonify({"ok": False, "msg": "Job not found"}), 404
+    status = job["status"]
+    if status == "running":
+        worker.cancel_job(job_id)
+        return jsonify({"ok": True, "msg": "Cancel signal sent — job will stop shortly"})
+    if status == "queued":
+        db.set_job_status(job_id, "cancelled")
+        db.set_file_status(job["file_id"], "pending")
+        return jsonify({"ok": True, "msg": "Queued job cancelled"})
+    return jsonify({"ok": False, "msg": f"Job is '{status}', cannot cancel"}), 409
+
+
+@app.post("/api/jobs/<int:job_id>/cancel")
+def api_cancel_job(job_id: int):
+    return _cancel_job_by_id(job_id)
+
+
+@app.post("/api/files/<int:file_id>/cancel")
+def api_cancel_file(file_id: int):
+    job = db.get_active_job_for_file(file_id)
+    if job is None:
+        return jsonify({"ok": False, "msg": "No active job for this file"}), 404
+    return _cancel_job_by_id(job["id"])
+
+
 @app.post("/api/queue/pause")
 def api_pause():
     worker.pause()

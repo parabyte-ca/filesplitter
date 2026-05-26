@@ -1,6 +1,6 @@
 # FileSplitter
 
-**Version 0.8.2**
+**Version 0.8.3**
 
 A self-hosted Docker service for TrueNAS (or any Linux host) that automatically indexes your media library, re-encodes video files to x265, and splits multi-scene anthology files at scene boundaries.
 
@@ -129,6 +129,7 @@ The SQLite database is stored at `./data/filesplitter.db` on the host (mounted i
 
 | Version | Date | Notes |
 |---|---|---|
+| **0.8.3** | 2026-05-26 | Features: sortable file table columns; job cancellation (kills ffmpeg, cleans up artifacts, resets file to pending); encode button fix for filenames with apostrophes; error message visibility (inline under badge + job history log in Jobs tab) |
 | **0.8.2** | 2026-05-26 | Feature: NVIDIA GPU (NVENC) encoding support — opt-in via `ENCODER_BACKEND=nvenc`; auto-detects GPU availability with CPU fallback; dynamic preset/CRF→CQ UI in Settings tab; docker-compose GPU passthrough block |
 | **0.8.1** | 2026-05-26 | Bug fixes: skip endpoint, DB race condition, WAL mode, indexes, CRF=0 edge case, scanner skip-count. Deployment: install.sh, update.sh, healthcheck, version label. |
 | **0.8.0** | 2026-05-26 | Initial release: scanner, encoder, splitter, Flask UI, SSE progress, Docker deployment |

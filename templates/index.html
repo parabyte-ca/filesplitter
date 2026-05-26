@@ -197,6 +197,16 @@
   .indicator-green { background: var(--green); }
   .indicator-yellow { background: var(--yellow); animation: pulse 1.5s infinite; }
   @keyframes pulse { 0%,100%{opacity:1}50%{opacity:0.4} }
+
+  .badge-cancelled { background: rgba(100,116,139,0.15); color: var(--muted); }
+
+  th.sortable { cursor: pointer; user-select: none; }
+  th.sortable:hover { color: var(--text); }
+  th.sort-asc::after { content: ' ↑'; color: var(--accent); }
+  th.sort-desc::after { content: ' ↓'; color: var(--accent); }
+
+  .error-detail { font-size: 10px; color: var(--red); margin-top: 3px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .history-log { font-family: monospace; font-size: 11px; color: var(--muted); background: var(--bg); border-radius: 4px; padding: 6px 8px; margin-top: 4px; white-space: pre-wrap; word-break: break-all; max-height: 100px; overflow-y: auto; }
 </style>
 </head>
 <body>
@@ -243,6 +253,7 @@
         <option value="done">Done</option>
         <option value="error">Error</option>
         <option value="skipped">Skipped</option>
+        <option value="cancelled">Cancelled</option>
       </select>
       <select class="filter-select" id="filter-type">
         <option value="">All types</option>
@@ -257,12 +268,12 @@
       <table id="files-table">
         <thead>
           <tr>
-            <th>Filename</th>
-            <th>Codec</th>
-            <th>Duration</th>
-            <th>Size</th>
-            <th>Type</th>
-            <th>Status</th>
+            <th class="sortable" data-sort="filename">Filename</th>
+            <th class="sortable" data-sort="codec">Codec</th>
+            <th class="sortable" data-sort="duration_sec">Duration</th>
+            <th class="sortable" data-sort="size_bytes">Size</th>
+            <th class="sortable" data-sort="is_anthology">Type</th>
+            <th class="sortable" data-sort="status">Status</th>
             <th>Actions</th>
           </tr>
         </thead>
@@ -275,8 +286,13 @@
 
   <!-- Jobs tab -->
   <div class="tab-pane" id="tab-jobs">
+    <div class="section-title" style="margin-bottom:12px">Active Jobs</div>
     <div class="card" id="jobs-container">
       <div class="empty">No active jobs</div>
+    </div>
+    <div class="section-title" style="margin-top:28px;margin-bottom:12px">Recent History</div>
+    <div class="card" id="history-container">
+      <div class="empty">Loading…</div>
     </div>
   </div>
 
@@ -380,6 +396,8 @@ let allFiles = [];
 let resolutions = ['original'];
 let pendingEncodeFileId = null;
 let isPaused = false;
+let sortCol = 'filename';
+let sortDir = 1; // 1=asc, -1=desc
 
 // ---- SSE ----
 const es = new EventSource('/stream');
@@ -421,13 +439,38 @@ function updateJobs(jobs) {
     <div class="job-card">
       <div class="job-header">
         <span class="badge badge-${j.status}">${j.type}</span>
-        <span class="job-filename" title="${j.file}">${j.file}</span>
+        <span class="job-filename" title="${escHtml(j.file)}">${escHtml(j.file)}</span>
         <span style="font-size:12px;color:var(--muted)">${j.progress}%</span>
+        <button class="btn btn-sm btn-danger" onclick="cancelJob(${j.id})">Cancel</button>
       </div>
       <div class="progress-bar"><div class="progress-fill" style="width:${j.progress}%"></div></div>
       ${j.log ? `<div class="job-log">${escHtml(j.log)}</div>` : ''}
     </div>
   `).join('');
+}
+
+async function loadJobHistory() {
+  const r = await fetch('/api/jobs');
+  const jobs = await r.json();
+  const c = document.getElementById('history-container');
+  if (!jobs || jobs.length === 0) {
+    c.innerHTML = '<div class="empty">No job history</div>';
+    return;
+  }
+  c.innerHTML = `<table>
+    <thead><tr>
+      <th>Type</th><th>File</th><th>Status</th><th>Finished</th><th>Log</th>
+    </tr></thead>
+    <tbody>
+      ${jobs.map(j => `<tr>
+        <td>${escHtml(j.job_type)}</td>
+        <td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(j.filename||'')}">${escHtml(j.filename||'—')}</td>
+        <td><span class="badge badge-${j.status}">${j.status}</span></td>
+        <td style="font-size:11px;color:var(--muted)">${j.finished_at ? j.finished_at.replace('T',' ').slice(0,16) : '—'}</td>
+        <td>${j.log_tail && j.status === 'error' ? `<details><summary style="font-size:11px;cursor:pointer;color:var(--muted)">Show log</summary><div class="history-log">${escHtml(j.log_tail)}</div></details>` : ''}</td>
+      </tr>`).join('')}
+    </tbody>
+  </table>`;
 }
 
 // ---- Files ----
@@ -459,6 +502,23 @@ function renderFiles() {
     return true;
   });
 
+  rows.sort((a, b) => {
+    let av = a[sortCol], bv = b[sortCol];
+    if (av == null && bv == null) return 0;
+    if (av == null) return 1;
+    if (bv == null) return -1;
+    if (typeof av === 'number') return (av - bv) * sortDir;
+    return String(av).localeCompare(String(bv)) * sortDir;
+  });
+
+  // Update sort arrows
+  document.querySelectorAll('th.sortable').forEach(th => {
+    th.classList.remove('sort-asc', 'sort-desc');
+    if (th.dataset.sort === sortCol) {
+      th.classList.add(sortDir === 1 ? 'sort-asc' : 'sort-desc');
+    }
+  });
+
   const body = document.getElementById('files-body');
   if (rows.length === 0) {
     body.innerHTML = '<tr><td colspan="7" class="empty">No files found</td></tr>';
@@ -466,20 +526,26 @@ function renderFiles() {
   }
 
   body.innerHTML = rows.map(f => {
-    const statusBadge = `<span class="badge badge-${f.status}">${f.status}</span>`;
+    let statusCell = `<span class="badge badge-${f.status}"${f.error_msg ? ` title="${escHtml(f.error_msg)}"` : ''}>${f.status}</span>`;
+    if (f.status === 'error' && f.error_msg) {
+      statusCell += `<div class="error-detail" title="${escHtml(f.error_msg)}">${escHtml(f.error_msg.slice(0, 80))}</div>`;
+    }
+
     const typeBadge = f.is_anthology
       ? '<span class="badge badge-anthology">Anthology</span>'
       : `<span class="badge badge-${f.codec === 'hevc' ? 'x265' : 'pending'}">${escHtml(f.codec || '?')}</span>`;
 
     const actions = [];
-    if (f.status !== 'processing') {
+    if (f.status === 'processing' || f.status === 'queued') {
+      actions.push(`<button class="btn btn-sm btn-danger" onclick="cancelFile(${f.id})">Cancel</button>`);
+    } else {
       if (f.codec !== 'hevc') {
-        actions.push(`<button class="btn btn-sm" onclick="openEncodeModal(${f.id}, '${escHtml(f.filename)}')">Encode</button>`);
+        actions.push(`<button class="btn btn-sm" onclick="openEncodeModal(${f.id}, ${JSON.stringify(f.filename)})">Encode</button>`);
       }
       if (f.is_anthology) {
         actions.push(`<button class="btn btn-sm" onclick="queueJob(${f.id}, 'split')">Split</button>`);
       }
-      if (f.status !== 'skipped') {
+      if (f.status !== 'skipped' && f.status !== 'done') {
         actions.push(`<button class="btn btn-sm" onclick="skipFile(${f.id})">Skip</button>`);
       }
     }
@@ -490,7 +556,7 @@ function renderFiles() {
       <td>${fmtDur(f.duration_sec)}</td>
       <td>${fmtSize(f.size_bytes)}</td>
       <td>${typeBadge}</td>
-      <td>${statusBadge}</td>
+      <td>${statusCell}</td>
       <td style="white-space:nowrap">${actions.join(' ')}</td>
     </tr>`;
   }).join('');
@@ -535,6 +601,18 @@ async function queueJob(fileId, type, resolution) {
 async function skipFile(fileId) {
   const r = await fetch(`/api/skip/${fileId}`, { method: 'POST' });
   if (r.ok) await loadFiles();
+}
+
+async function cancelJob(jobId) {
+  const r = await fetch(`/api/jobs/${jobId}/cancel`, { method: 'POST' });
+  const d = await r.json();
+  if (!r.ok) alert(d.msg || 'Cancel failed');
+}
+
+async function cancelFile(fileId) {
+  const r = await fetch(`/api/files/${fileId}/cancel`, { method: 'POST' });
+  const d = await r.json();
+  if (!r.ok) alert(d.msg || 'Cancel failed');
 }
 
 document.getElementById('btn-scan').onclick = async () => {
@@ -676,6 +754,20 @@ document.querySelectorAll('.tab').forEach(tab => {
     document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
     tab.classList.add('active');
     document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+    if (tab.dataset.tab === 'jobs') loadJobHistory();
+  };
+});
+
+// ---- Sort headers ----
+document.querySelectorAll('th.sortable').forEach(th => {
+  th.onclick = () => {
+    if (th.dataset.sort === sortCol) {
+      sortDir *= -1;
+    } else {
+      sortCol = th.dataset.sort;
+      sortDir = 1;
+    }
+    renderFiles();
   };
 });
 

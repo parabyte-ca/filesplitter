@@ -114,6 +114,22 @@ def get_file(file_id: int) -> sqlite3.Row:
         return conn.execute("SELECT * FROM files WHERE id=?", (file_id,)).fetchone()
 
 
+def get_active_job_for_file(file_id: int) -> sqlite3.Row | None:
+    with connect() as conn:
+        return conn.execute(
+            "SELECT * FROM jobs WHERE file_id=? AND status IN ('queued','running') ORDER BY id DESC LIMIT 1",
+            (file_id,),
+        ).fetchone()
+
+
+def get_job(job_id: int) -> sqlite3.Row | None:
+    with connect() as conn:
+        return conn.execute(
+            "SELECT j.*, f.filename, f.path FROM jobs j JOIN files f ON j.file_id = f.id WHERE j.id=?",
+            (job_id,),
+        ).fetchone()
+
+
 def get_all_files() -> list[sqlite3.Row]:
     with connect() as conn:
         return conn.execute(

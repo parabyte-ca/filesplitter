@@ -2,6 +2,8 @@ import os
 import re
 import subprocess
 import tempfile
+import threading
+import time
 import logging
 
 import config
@@ -11,10 +13,15 @@ logger = logging.getLogger(__name__)
 _PTS_RE = re.compile(r"pts_time=([0-9]+(?:\.[0-9]+)?)")
 
 
-def detect_scenes(video_path: str, threshold: float = None) -> list[float]:
+def detect_scenes(
+    video_path: str,
+    threshold: float = None,
+    cancel_event: threading.Event | None = None,
+) -> list[float]:
     """
-    Return a sorted list of scene-change timestamps (in seconds) for the given file.
+    Return a sorted list of scene-change timestamps (seconds) for the given file.
     Nearby timestamps closer than MIN_SCENE_DURATION are merged.
+    Returns [] if cancelled or on error.
     """
     if threshold is None:
         threshold = config.SCENE_THRESHOLD
@@ -29,11 +36,24 @@ def detect_scenes(video_path: str, threshold: float = None) -> list[float]:
             "-filter:v", f"select='gt(scene,{threshold})',metadata=print:file={tmp_path}",
             "-an", "-f", "null", "-",
         ]
-        result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=3600,
-        )
-        if result.returncode != 0:
-            logger.error("Scene detection failed for %s: %s", video_path, result.stderr[-500:])
+        proc = subprocess.Popen(cmd, capture_output=True, text=True)
+
+        # Poll until complete, checking for cancel every 0.5s.
+        while proc.poll() is None:
+            if cancel_event and cancel_event.is_set():
+                logger.info("Scene detection cancelled for %s", video_path)
+                proc.terminate()
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait()
+                return []
+            time.sleep(0.5)
+
+        if proc.returncode != 0:
+            stderr = proc.stderr.read() if proc.stderr else ""
+            logger.error("Scene detection failed for %s: %s", video_path, stderr[-500:])
             return []
 
         timestamps = _parse_timestamps(tmp_path)
@@ -60,7 +80,6 @@ def _parse_timestamps(path: str) -> list[float]:
 
 
 def _merge_nearby(timestamps: list[float], min_gap: float) -> list[float]:
-    """Remove timestamps that are too close together, keeping only ones at least min_gap apart."""
     if not timestamps:
         return []
     result = [timestamps[0]]
