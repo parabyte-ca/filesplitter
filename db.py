@@ -52,6 +52,10 @@ def init_db() -> None:
         CREATE INDEX IF NOT EXISTS idx_jobs_file_id ON jobs(file_id);
         CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
     """)
+    # Add resolution columns if this is an existing DB from before v0.8.9
+    conn.execute("ALTER TABLE files ADD COLUMN IF NOT EXISTS width INTEGER DEFAULT 0")
+    conn.execute("ALTER TABLE files ADD COLUMN IF NOT EXISTS height INTEGER DEFAULT 0")
+    conn.commit()
     # Reset jobs left in running/processing state by a previous container crash
     conn.execute(
         "UPDATE jobs SET status='error', log_tail='Interrupted by restart', finished_at=?"
@@ -81,7 +85,7 @@ def connect():
 # --- Files ---
 
 def upsert_file(path: str, filename: str, size_bytes: int, duration_sec: float,
-                codec: str, is_anthology: bool) -> int:
+                codec: str, is_anthology: bool, width: int = 0, height: int = 0) -> int:
     now = _now()
     with connect() as conn:
         existing = conn.execute(
@@ -90,16 +94,16 @@ def upsert_file(path: str, filename: str, size_bytes: int, duration_sec: float,
         if existing:
             conn.execute(
                 """UPDATE files SET filename=?, size_bytes=?, duration_sec=?,
-                   codec=?, is_anthology=?, updated_at=? WHERE path=?""",
-                (filename, size_bytes, duration_sec, codec, int(is_anthology), now, path),
+                   codec=?, is_anthology=?, width=?, height=?, updated_at=? WHERE path=?""",
+                (filename, size_bytes, duration_sec, codec, int(is_anthology), width, height, now, path),
             )
             return existing["id"]
         else:
             cur = conn.execute(
                 """INSERT INTO files (path, filename, size_bytes, duration_sec,
-                   codec, is_anthology, status, discovered_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)""",
-                (path, filename, size_bytes, duration_sec, codec, int(is_anthology), now, now),
+                   codec, is_anthology, width, height, status, discovered_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)""",
+                (path, filename, size_bytes, duration_sec, codec, int(is_anthology), width, height, now, now),
             )
             return cur.lastrowid
 
