@@ -1,6 +1,6 @@
 # FileSplitter
 
-**Version 0.8.1**
+**Version 0.8.2**
 
 A self-hosted Docker service for TrueNAS (or any Linux host) that automatically indexes your media library, re-encodes video files to x265, and splits multi-scene anthology files at scene boundaries.
 
@@ -48,6 +48,33 @@ This pulls the latest code, rebuilds the image, and restarts the container with 
 
 ---
 
+## GPU Acceleration (NVENC)
+
+If your TrueNAS server has an NVIDIA GPU, you can use hardware-accelerated HEVC encoding via NVENC — typically **5–10× faster** than CPU:
+
+| Encoder | 1080p speed | 1-hr 4K encode |
+|---|---|---|
+| CPU (libx265 medium) | 30–80 fps | 1–4 hours |
+| GPU (hevc_nvenc) | 200–500 fps | 10–20 min |
+
+**Trade-off**: NVENC quality at the same numeric value is slightly below libx265, but visually near-indistinguishable. Use CQ 22–24 instead of CRF 28 for comparable quality.
+
+### Prerequisites
+
+1. NVIDIA drivers installed on the TrueNAS host
+2. `nvidia-container-toolkit` installed (`apt install nvidia-container-toolkit` then restart Docker)
+
+### Enable GPU encoding
+
+1. Edit `docker-compose.yml` — uncomment both the `ENCODER_BACKEND: nvenc` line and the `deploy` block at the bottom
+2. Run `./update.sh`
+3. Open the dashboard → Settings tab → the **GPU detected ✓** badge should appear green
+4. Select **GPU (NVENC)** as the backend and save
+
+The Settings tab will show the available NVENC presets and update the quality label to **CQ** (equivalent scale to CRF, same 0–51 range). If NVENC is unavailable at runtime, jobs fall back to CPU automatically with a log warning.
+
+---
+
 ## Configuration
 
 All settings are environment variables in `docker-compose.yml`. The dashboard Settings tab lets you change encoding and scene-detection parameters at runtime without a restart.
@@ -61,8 +88,9 @@ All settings are environment variables in `docker-compose.yml`. The dashboard Se
 | `SPLIT_MIN_DURATION` | `3600` | Flag as anthology if duration ≥ this (seconds) |
 | `SPLIT_MIN_SIZE` | `4294967296` | Flag as anthology if size ≥ this (bytes, default 4 GB) |
 | `SPLIT_KEYWORDS` | `Vol,Compilation,…` | Filename keywords that trigger anthology classification |
-| `X265_CRF` | `28` | x265 quality (18=high, 28=good, 35=small) |
-| `X265_PRESET` | `medium` | x265 speed/compression preset |
+| `ENCODER_BACKEND` | `cpu` | `cpu` (libx265) or `nvenc` (GPU HEVC — see GPU section above) |
+| `X265_CRF` | `28` | x265 CRF / NVENC CQ quality (18=high, 28=good, 35=small) |
+| `X265_PRESET` | `medium` | Encoding speed preset (CPU: ultrafast→veryslow; NVENC: fast/medium/slow/hq/hp) |
 | `TARGET_RESOLUTION` | `original` | Output resolution: `original`, `1080p`, `720p`, etc. |
 | `MAX_WORKERS` | `2` | Simultaneous ffmpeg jobs |
 
@@ -101,5 +129,6 @@ The SQLite database is stored at `./data/filesplitter.db` on the host (mounted i
 
 | Version | Date | Notes |
 |---|---|---|
+| **0.8.2** | 2026-05-26 | Feature: NVIDIA GPU (NVENC) encoding support — opt-in via `ENCODER_BACKEND=nvenc`; auto-detects GPU availability with CPU fallback; dynamic preset/CRF→CQ UI in Settings tab; docker-compose GPU passthrough block |
 | **0.8.1** | 2026-05-26 | Bug fixes: skip endpoint, DB race condition, WAL mode, indexes, CRF=0 edge case, scanner skip-count. Deployment: install.sh, update.sh, healthcheck, version label. |
 | **0.8.0** | 2026-05-26 | Initial release: scanner, encoder, splitter, Flask UI, SSE progress, Docker deployment |

@@ -159,6 +159,7 @@ def api_resume():
 
 @app.get("/api/settings")
 def api_get_settings():
+    import encoder as _enc
     return jsonify({
         "media_paths": config.MEDIA_PATHS,
         "scene_threshold": config.SCENE_THRESHOLD,
@@ -172,6 +173,10 @@ def api_get_settings():
         "max_workers": config.MAX_WORKERS,
         "resolutions": ["original"] + list(config.RESOLUTION_MAP.keys()),
         "flask_port": config.FLASK_PORT,
+        "encoder_backend": config.ENCODER_BACKEND,
+        "nvenc_available": _enc.NVENC_AVAILABLE,
+        "cpu_presets": _enc._CPU_PRESETS,
+        "nvenc_presets": _enc._NVENC_PRESETS,
     })
 
 
@@ -182,12 +187,12 @@ def api_post_settings():
     updatable = [
         "scene_threshold", "min_scene_duration", "split_min_duration",
         "split_min_size", "x265_crf", "x265_preset", "target_resolution",
+        "encoder_backend",
     ]
     for key in updatable:
         if key in body:
             val = body[key]
             db.set_setting(key, str(val))
-            # Update live config
             if hasattr(config, key.upper()):
                 try:
                     attr = getattr(config, key.upper())

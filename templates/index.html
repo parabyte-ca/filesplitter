@@ -293,22 +293,41 @@
         <div style="font-size:11px;color:var(--muted);margin-top:6px">Paths are read by the container — make sure they are mounted as volumes.</div>
       </div>
 
-      <div class="settings-grid" style="margin-top:20px">
+      <!-- Encoder backend -->
+      <div class="section" style="margin-top:20px">
+        <div class="section-title">Encoder</div>
+        <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+          <div class="form-group" style="margin:0;flex:1;min-width:200px">
+            <label>Backend</label>
+            <select id="s-backend" class="filter-select" style="width:100%">
+              <option value="cpu">CPU (libx265)</option>
+              <option value="nvenc">GPU (NVENC · hevc_nvenc)</option>
+            </select>
+          </div>
+          <div style="padding-top:18px">
+            <span id="gpu-badge" class="badge" style="font-size:12px"></span>
+          </div>
+        </div>
+        <div id="nvenc-tip" style="display:none;font-size:11px;color:var(--yellow);margin-top:6px">
+          NVENC not detected — jobs will automatically fall back to CPU. Check that the GPU is passed through in docker-compose.yml.
+        </div>
+        <div id="nvenc-ok-tip" style="display:none;font-size:11px;color:var(--green);margin-top:6px">
+          GPU detected. NVENC is 5–10× faster than CPU. Recommended CQ: 22–24 (equivalent to libx265 CRF 28).
+        </div>
+      </div>
+
+      <div class="settings-grid" style="margin-top:16px">
         <div class="form-group">
           <label>Default Output Resolution</label>
           <select id="s-resolution" class="filter-select" style="width:100%"></select>
         </div>
         <div class="form-group">
-          <label>x265 CRF (18=high quality · 28=good · 35=smaller)</label>
+          <label id="s-crf-label">CRF — libx265 quality (18=high · 28=good · 35=smaller)</label>
           <input type="number" id="s-crf" min="0" max="51" />
         </div>
         <div class="form-group">
-          <label>x265 Preset</label>
-          <select id="s-preset" class="filter-select" style="width:100%">
-            <option>ultrafast</option><option>superfast</option><option>veryfast</option>
-            <option>faster</option><option>fast</option><option selected>medium</option>
-            <option>slow</option><option>slower</option><option>veryslow</option>
-          </select>
+          <label id="s-preset-label">Preset</label>
+          <select id="s-preset" class="filter-select" style="width:100%"></select>
         </div>
         <div class="form-group">
           <label>Scene Detection Threshold (0.0–1.0)</label>
@@ -540,18 +559,61 @@ document.getElementById('btn-queue-all-split').onclick = async () => {
 };
 
 // ---- Settings ----
+let _cpuPresets = ['ultrafast','superfast','veryfast','faster','fast','medium','slow','slower','veryslow'];
+let _nvencPresets = ['fast','medium','slow','hq','hp'];
+let _nvencAvailable = false;
+
+function _updateEncoderUI(backend) {
+  const isNvenc = backend === 'nvenc';
+  const presets = isNvenc ? _nvencPresets : _cpuPresets;
+  const currentPreset = document.getElementById('s-preset').value || 'medium';
+  document.getElementById('s-preset').innerHTML = presets.map(p =>
+    `<option value="${p}" ${p === currentPreset ? 'selected' : ''}>${p}</option>`
+  ).join('');
+  const crfLabel = document.getElementById('s-crf-label');
+  crfLabel.textContent = isNvenc
+    ? 'CQ — NVENC quality (0=lossless · 22=high · 28=good · 35=smaller)'
+    : 'CRF — libx265 quality (18=high · 28=good · 35=smaller)';
+  document.getElementById('s-preset-label').textContent = isNvenc ? 'NVENC Preset' : 'x265 Preset';
+
+  const badge = document.getElementById('gpu-badge');
+  const nvencTip = document.getElementById('nvenc-tip');
+  const nvencOkTip = document.getElementById('nvenc-ok-tip');
+  if (isNvenc) {
+    if (_nvencAvailable) {
+      badge.className = 'badge badge-done'; badge.textContent = 'GPU detected ✓';
+      nvencTip.style.display = 'none'; nvencOkTip.style.display = 'block';
+    } else {
+      badge.className = 'badge badge-error'; badge.textContent = 'GPU not found ✗';
+      nvencTip.style.display = 'block'; nvencOkTip.style.display = 'none';
+    }
+  } else {
+    badge.className = ''; badge.textContent = '';
+    nvencTip.style.display = 'none'; nvencOkTip.style.display = 'none';
+  }
+}
+
 async function loadSettings() {
   const r = await fetch('/api/settings');
   const s = await r.json();
   resolutions = s.resolutions || ['original'];
+  _nvencAvailable = s.nvenc_available || false;
+  if (s.cpu_presets) _cpuPresets = s.cpu_presets;
+  if (s.nvenc_presets) _nvencPresets = s.nvenc_presets;
 
   // Populate resolution dropdowns
   const opts = resolutions.map(r => `<option value="${r}" ${r === s.target_resolution ? 'selected' : ''}>${r}</option>`).join('');
   document.getElementById('s-resolution').innerHTML = opts;
   document.getElementById('modal-resolution').innerHTML = opts;
 
+  // Encoder backend
+  const backend = s.encoder_backend || 'cpu';
+  document.getElementById('s-backend').value = backend;
+  _updateEncoderUI(backend);
+
   document.getElementById('s-crf').value = s.x265_crf;
-  document.getElementById('s-preset').value = s.x265_preset;
+  // Set preset after presets are populated by _updateEncoderUI
+  document.getElementById('s-preset').value = s.x265_preset || 'medium';
   document.getElementById('s-scene-threshold').value = s.scene_threshold;
   document.getElementById('s-min-scene').value = s.min_scene_duration;
   document.getElementById('s-split-dur').value = s.split_min_duration;
@@ -559,6 +621,8 @@ async function loadSettings() {
 
   renderPaths(s.media_paths || []);
 }
+
+document.getElementById('s-backend').onchange = (e) => _updateEncoderUI(e.target.value);
 
 function renderPaths(paths) {
   const c = document.getElementById('paths-container');
@@ -581,6 +645,7 @@ document.getElementById('btn-add-path').onclick = () => {
 
 document.getElementById('btn-save-settings').onclick = async () => {
   const body = {
+    encoder_backend: document.getElementById('s-backend').value,
     target_resolution: document.getElementById('s-resolution').value,
     x265_crf: parseInt(document.getElementById('s-crf').value),
     x265_preset: document.getElementById('s-preset').value,

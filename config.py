@@ -33,6 +33,10 @@ SPLIT_KEYWORDS: list[str] = _parse_paths(
 X265_CRF: int = int(os.environ.get("X265_CRF", "28"))
 X265_PRESET: str = os.environ.get("X265_PRESET", "medium")
 
+# cpu — software libx265 (default)
+# nvenc — NVIDIA hardware hevc_nvenc (requires GPU device passthrough in docker-compose.yml)
+ENCODER_BACKEND: str = os.environ.get("ENCODER_BACKEND", "cpu")
+
 # original | 480p | 720p | 1080p | 1440p | 2160p
 TARGET_RESOLUTION: str = os.environ.get("TARGET_RESOLUTION", "original")
 
