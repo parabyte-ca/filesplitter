@@ -36,7 +36,7 @@ def detect_scenes(
             "-filter:v", f"select='gt(scene,{threshold})',metadata=print:file={tmp_path}",
             "-an", "-f", "null", "-",
         ]
-        proc = subprocess.Popen(cmd, capture_output=True, text=True)
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
         # Poll until complete, checking for cancel every 0.5s.
         while proc.poll() is None:
