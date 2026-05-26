@@ -82,6 +82,17 @@ def init_db() -> None:
             if saved > 0:
                 conn.execute("UPDATE jobs SET saved_bytes=? WHERE id=?", (saved, row[0]))
     conn.commit()
+    # Fix files whose codec wasn't updated at encode time (pre-v0.9.2):
+    # any file with a done encode job should be recorded as hevc
+    conn.execute("""
+        UPDATE files SET codec='hevc'
+        WHERE codec != 'hevc'
+          AND id IN (
+              SELECT DISTINCT file_id FROM jobs
+              WHERE job_type='encode' AND status='done'
+          )
+    """)
+    conn.commit()
     # Reset jobs left in running/processing state by a previous container crash
     conn.execute(
         "UPDATE jobs SET status='error', log_tail='Interrupted by restart', finished_at=?"
@@ -249,12 +260,18 @@ def get_recent_jobs(limit: int = 20) -> list[sqlite3.Row]:
         """, (limit,)).fetchall()
 
 
-def update_file_size(file_id: int, size_bytes: int) -> None:
+def update_file_size(file_id: int, size_bytes: int, codec: str = None) -> None:
     with connect() as conn:
-        conn.execute(
-            "UPDATE files SET size_bytes=?, updated_at=? WHERE id=?",
-            (size_bytes, _now(), file_id),
-        )
+        if codec:
+            conn.execute(
+                "UPDATE files SET size_bytes=?, codec=?, updated_at=? WHERE id=?",
+                (size_bytes, codec, _now(), file_id),
+            )
+        else:
+            conn.execute(
+                "UPDATE files SET size_bytes=?, updated_at=? WHERE id=?",
+                (size_bytes, _now(), file_id),
+            )
 
 
 def update_job_progress(job_id: int, progress_pct: float, log_tail: str = None,
