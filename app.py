@@ -41,6 +41,7 @@ def _sse_stream():
                     "progress": round(j["progress_pct"] or 0, 1),
                     "log": j["log_tail"] or "",
                     "status": j["status"],
+                    "started_at": j["started_at"] or "",
                 }
                 for j in db.get_active_jobs()
             ],

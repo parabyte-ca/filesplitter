@@ -5,29 +5,56 @@ import tempfile
 import threading
 import time
 import logging
+from collections.abc import Callable
 
 import config
 
 logger = logging.getLogger(__name__)
 
-_PTS_RE = re.compile(r"pts_time=([0-9]+(?:\.[0-9]+)?)")
+_PTS_RE  = re.compile(r"pts_time=([0-9]+(?:\.[0-9]+)?)")
+_TIME_RE = re.compile(r"time=(\d+):(\d+):(\d+\.\d+)")
+
+
+def _drain_stderr(
+    proc: subprocess.Popen,
+    buf: list,
+    duration_sec: float,
+    progress_cb: Callable | None,
+) -> None:
+    """Read proc.stderr line-by-line to prevent pipe-buffer deadlock.
+    Optionally parses ffmpeg's time= field to report progress (2–33%)."""
+    for line in proc.stderr:
+        buf.append(line)
+        if progress_cb and duration_sec > 0:
+            m = _TIME_RE.search(line)
+            if m:
+                t = int(m.group(1)) * 3600 + int(m.group(2)) * 60 + float(m.group(3))
+                pct = 2.0 + (t / duration_sec) * 31.0
+                progress_cb(min(pct, 33.0), "Detecting scenes…")
 
 
 def detect_scenes(
     video_path: str,
     threshold: float = None,
     cancel_event: threading.Event | None = None,
+    duration_sec: float = 0,
+    progress_cb: Callable[[float, str], None] | None = None,
 ) -> list[float]:
     """
     Return a sorted list of scene-change timestamps (seconds) for the given file.
     Nearby timestamps closer than MIN_SCENE_DURATION are merged.
     Returns [] if cancelled or on error.
+
+    duration_sec + progress_cb: when both are provided, incremental progress is
+    reported from 2% to 33% by parsing ffmpeg's time= output.
     """
     if threshold is None:
         threshold = config.SCENE_THRESHOLD
 
     with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as tf:
         tmp_path = tf.name
+
+    stderr_buf: list[str] = []
 
     try:
         cmd = [
@@ -36,9 +63,15 @@ def detect_scenes(
             "-filter:v", f"select='gt(scene,{threshold})',metadata=print:file={tmp_path}",
             "-an", "-f", "null", "-",
         ]
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
 
-        # Poll until complete, checking for cancel every 0.5s.
+        drain_thread = threading.Thread(
+            target=_drain_stderr,
+            args=(proc, stderr_buf, duration_sec, progress_cb),
+            daemon=True,
+        )
+        drain_thread.start()
+
         while proc.poll() is None:
             if cancel_event and cancel_event.is_set():
                 logger.info("Scene detection cancelled for %s", video_path)
@@ -48,12 +81,15 @@ def detect_scenes(
                 except subprocess.TimeoutExpired:
                     proc.kill()
                     proc.wait()
+                drain_thread.join(timeout=5)
                 return []
             time.sleep(0.5)
 
+        drain_thread.join(timeout=10)
+
         if proc.returncode != 0:
-            stderr = proc.stderr.read() if proc.stderr else ""
-            logger.error("Scene detection failed for %s: %s", video_path, stderr[-500:])
+            stderr_tail = "".join(stderr_buf)[-500:]
+            logger.error("Scene detection failed for %s: %s", video_path, stderr_tail)
             return []
 
         timestamps = _parse_timestamps(tmp_path)
