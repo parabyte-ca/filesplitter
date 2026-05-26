@@ -9,17 +9,9 @@ logger = logging.getLogger(__name__)
 
 
 def _is_anthology(filename: str, size_bytes: int, duration_sec: float) -> bool:
-    name_lower = filename.lower()
-    keyword    = any(kw.lower() in name_lower for kw in config.SPLIT_KEYWORDS)
     long_enough = bool(duration_sec and duration_sec >= config.SPLIT_MIN_DURATION)
     big_enough  = bool(size_bytes  and size_bytes  >= config.SPLIT_MIN_SIZE)
-    # Keyword alone is not sufficient — must be backed by size or duration evidence.
-    # Duration or size alone (without keyword) still qualifies.
-    if long_enough and big_enough:
-        return True
-    if keyword and (long_enough or big_enough):
-        return True
-    return False
+    return long_enough or big_enough
 
 
 def scan_all() -> dict:

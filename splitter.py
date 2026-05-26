@@ -35,7 +35,12 @@ def split_by_scenes(
     if progress_cb:
         progress_cb(2.0, "Detecting scenes…")
 
-    scene_cuts = scene_detector.detect_scenes(input_path, cancel_event=cancel_event)
+    scene_cuts = scene_detector.detect_scenes(
+        input_path,
+        cancel_event=cancel_event,
+        duration_sec=probe.duration_sec or 0,
+        progress_cb=progress_cb,
+    )
 
     if cancel_event and cancel_event.is_set():
         return None
@@ -84,13 +89,13 @@ def split_by_scenes(
         if result.returncode != 0:
             err_msg = result.stderr.strip()[-300:] if result.stderr.strip() else "ffmpeg split failed"
             logger.error("Split failed segment %d: %s", i + 1, err_msg)
-            pct = 5.0 + i / total * 90.0
+            pct = 35.0 + i / total * 57.0
             if progress_cb:
                 progress_cb(pct, f"ERROR: Segment {i + 1}/{total} failed — {err_msg}")
             _cleanup_files(output_paths)
             return None
 
-        pct = 5.0 + (i + 1) / total * 90.0
+        pct = 35.0 + (i + 1) / total * 57.0
         if progress_cb:
             progress_cb(pct, f"Split {i + 1}/{total}: {os.path.basename(out_path)}")
 

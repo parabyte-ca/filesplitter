@@ -432,6 +432,16 @@ function updateStats(s) {
 }
 
 // ---- Jobs ----
+function fmtElapsed(startedAt) {
+  if (!startedAt) return '';
+  const secs = Math.floor((Date.now() - new Date(startedAt)) / 1000);
+  if (secs < 0) return '';
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = secs % 60;
+  return h > 0 ? `${h}h ${m}m` : m > 0 ? `${m}m ${s}s` : `${s}s`;
+}
+
 function updateJobs(jobs) {
   const c = document.getElementById('jobs-container');
   if (!jobs || jobs.length === 0) {
@@ -443,6 +453,7 @@ function updateJobs(jobs) {
       <div class="job-header">
         <span class="badge badge-${j.status}">${j.type}</span>
         <span class="job-filename" title="${escHtml(j.file)}">${escHtml(j.file)}</span>
+        ${j.started_at ? `<span style="font-size:11px;color:var(--muted)" title="Running time">${fmtElapsed(j.started_at)}</span>` : ''}
         <span style="font-size:12px;color:var(--muted)">${j.progress}%</span>
         <button class="btn btn-sm btn-danger" onclick="cancelJob(${j.id})">Cancel</button>
       </div>
