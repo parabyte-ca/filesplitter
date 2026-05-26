@@ -1,6 +1,6 @@
 # FileSplitter
 
-**Version 0.8.7**
+**Version 0.8.8**
 
 A self-hosted Docker service for TrueNAS (or any Linux host) that automatically indexes your media library, re-encodes video files to x265, and splits multi-scene anthology files at scene boundaries.
 
@@ -129,6 +129,7 @@ The SQLite database is stored at `./data/filesplitter.db` on the host (mounted i
 
 | Version | Date | Notes |
 |---|---|---|
+| **0.8.8** | 2026-05-26 | Mobile-friendly layout: responsive stats grid (3×2 on phones), horizontal table scroll, Codec/Duration columns hidden on small screens, header wraps cleanly; docker volume warning added to Settings → Scan Paths |
 | **0.8.7** | 2026-05-26 | Encode savings display (% + sizes shown in Recent History after encode job); content-based scene naming via ThePornDB (per-scene pHash keyframe matching → title-parse fallback → numbered fallback); split output renamed to `"01 - Scene Name.mp4"` or `"{stem} 01.mp4"` |
 | **0.8.6** | 2026-05-26 | Scene detection stall fix: stderr pipe now drained in a background thread, preventing ffmpeg from deadlocking on the 64KB pipe buffer; incremental progress reported 2–33% by parsing ffmpeg's time= output; job timer added to Active Jobs tab |
 | **0.8.5** | 2026-05-26 | Anthology logic overhaul: keywords removed from classifier (too noisy); pure duration OR size logic with recalibrated defaults (90 min / 2 GB) — catches all multi-hour 720p compilations while leaving single short-form files unclassified |
