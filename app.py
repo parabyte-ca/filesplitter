@@ -174,6 +174,12 @@ def api_cancel_file(file_id: int):
     return _cancel_job_by_id(job["id"])
 
 
+@app.post("/api/jobs/clear")
+def api_clear_jobs():
+    count = db.clear_finished_jobs()
+    return jsonify({"ok": True, "cleared": count})
+
+
 @app.post("/api/queue/pause")
 def api_pause():
     worker.pause()

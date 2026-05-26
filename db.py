@@ -52,6 +52,14 @@ def init_db() -> None:
         CREATE INDEX IF NOT EXISTS idx_jobs_file_id ON jobs(file_id);
         CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
     """)
+    # Reset jobs left in running/processing state by a previous container crash
+    conn.execute(
+        "UPDATE jobs SET status='error', log_tail='Interrupted by restart', finished_at=?"
+        " WHERE status='running'",
+        (_now(),),
+    )
+    conn.execute("UPDATE files SET status='pending' WHERE status='processing'")
+    conn.commit()
     conn.close()
 
 
@@ -173,6 +181,14 @@ def get_active_jobs() -> list[sqlite3.Row]:
             WHERE j.status IN ('queued', 'running')
             ORDER BY j.id
         """).fetchall()
+
+
+def clear_finished_jobs() -> int:
+    with connect() as conn:
+        cur = conn.execute(
+            "DELETE FROM jobs WHERE status IN ('done','error','cancelled')"
+        )
+        return cur.rowcount
 
 
 def get_recent_jobs(limit: int = 20) -> list[sqlite3.Row]:
