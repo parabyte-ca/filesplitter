@@ -1,0 +1,42 @@
+services:
+  filesplitter:
+    build: .
+    ports:
+      - "4250:4250"
+    volumes:
+      # Primary media path — Bellesa library
+      - /mnt/shared_vol/adult/Bellesa:/media/bellesa
+      # Add more volume mounts here for additional libraries, e.g.:
+      # - /mnt/shared_vol/adult/OtherStudio:/media/otherstudio
+      #
+      # Persistent data (SQLite database)
+      - ./data:/app/data
+    environment:
+      # Comma-separated list of paths inside the container to scan
+      MEDIA_PATHS: /media/bellesa
+      # Add more paths here when you add volume mounts above, e.g.:
+      # MEDIA_PATHS: /media/bellesa,/media/otherstudio
+
+      # Port (4250 preferred; auto-increments if occupied)
+      FLASK_PORT: "4250"
+
+      # Scene detection sensitivity (0.0=everything, 1.0=nothing; 0.4 is a good default)
+      SCENE_THRESHOLD: "0.4"
+      # Minimum gap between split points in seconds (prevents micro-clips)
+      MIN_SCENE_DURATION: "120"
+
+      # Anthology detection thresholds (any one criterion triggers split eligibility)
+      SPLIT_MIN_DURATION: "3600"          # 60 minutes
+      SPLIT_MIN_SIZE: "4294967296"        # 4 GB
+      SPLIT_KEYWORDS: "Vol,Compilation,Anthology,Collection,Kink"
+
+      # x265 encoding defaults (overridable per-job from the UI)
+      X265_CRF: "28"
+      X265_PRESET: "medium"
+      TARGET_RESOLUTION: "original"      # original | 480p | 720p | 1080p | 1440p | 2160p
+
+      # Max simultaneous ffmpeg jobs (keep low to avoid overwhelming the NAS)
+      MAX_WORKERS: "2"
+
+      DATABASE_PATH: /app/data/filesplitter.db
+    restart: unless-stopped

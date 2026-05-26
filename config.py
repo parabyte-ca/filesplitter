@@ -1,0 +1,60 @@
+import os
+import socket
+
+
+def _find_free_port(preferred: int) -> int:
+    """Return preferred port if free, otherwise next available port."""
+    port = preferred
+    while port < preferred + 20:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind(("0.0.0.0", port))
+                return port
+            except OSError:
+                port += 1
+    return port
+
+
+def _parse_paths(raw: str) -> list[str]:
+    return [p.strip() for p in raw.split(",") if p.strip()]
+
+
+MEDIA_PATHS: list[str] = _parse_paths(os.environ.get("MEDIA_PATHS", "/media"))
+
+SCENE_THRESHOLD: float = float(os.environ.get("SCENE_THRESHOLD", "0.4"))
+MIN_SCENE_DURATION: int = int(os.environ.get("MIN_SCENE_DURATION", "120"))
+
+SPLIT_MIN_DURATION: int = int(os.environ.get("SPLIT_MIN_DURATION", "3600"))
+SPLIT_MIN_SIZE: int = int(os.environ.get("SPLIT_MIN_SIZE", str(4 * 1024 ** 3)))
+SPLIT_KEYWORDS: list[str] = _parse_paths(
+    os.environ.get("SPLIT_KEYWORDS", "Vol,Compilation,Anthology,Collection,Kink")
+)
+
+X265_CRF: int = int(os.environ.get("X265_CRF", "28"))
+X265_PRESET: str = os.environ.get("X265_PRESET", "medium")
+
+# original | 480p | 720p | 1080p | 1440p | 2160p
+TARGET_RESOLUTION: str = os.environ.get("TARGET_RESOLUTION", "original")
+
+RESOLUTION_MAP: dict[str, int] = {
+    "480p": 480,
+    "720p": 720,
+    "1080p": 1080,
+    "1440p": 1440,
+    "2160p": 2160,
+}
+
+MAX_WORKERS: int = int(os.environ.get("MAX_WORKERS", "2"))
+
+VIDEO_EXTENSIONS: set[str] = set(
+    os.environ.get(
+        "VIDEO_EXTENSIONS", ".mp4,.mkv,.avi,.mov,.wmv,.m4v,.ts,.flv"
+    ).split(",")
+)
+
+DATABASE_PATH: str = os.environ.get("DATABASE_PATH", "/app/data/filesplitter.db")
+
+_preferred_port = int(os.environ.get("FLASK_PORT", "4250"))
+FLASK_PORT: int = _find_free_port(_preferred_port)
+if FLASK_PORT != _preferred_port:
+    print(f"[config] Port {_preferred_port} in use, using {FLASK_PORT} instead")
