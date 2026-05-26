@@ -290,7 +290,10 @@
     <div class="card" id="jobs-container">
       <div class="empty">No active jobs</div>
     </div>
-    <div class="section-title" style="margin-top:28px;margin-bottom:12px">Recent History</div>
+    <div style="display:flex;align-items:center;gap:12px;margin-top:28px;margin-bottom:12px">
+      <div class="section-title" style="margin:0">Recent History</div>
+      <button class="btn btn-sm" id="btn-clear-history">Clear History</button>
+    </div>
     <div class="card" id="history-container">
       <div class="empty">Loading…</div>
     </div>
@@ -540,7 +543,7 @@ function renderFiles() {
       actions.push(`<button class="btn btn-sm btn-danger" onclick="cancelFile(${f.id})">Cancel</button>`);
     } else {
       if (f.codec !== 'hevc') {
-        actions.push(`<button class="btn btn-sm" onclick="openEncodeModal(${f.id}, ${JSON.stringify(f.filename)})">Encode</button>`);
+        actions.push(`<button class="btn btn-sm" onclick="openEncodeModal(${f.id})">Encode</button>`);
       }
       if (f.is_anthology) {
         actions.push(`<button class="btn btn-sm" onclick="queueJob(${f.id}, 'split')">Split</button>`);
@@ -569,9 +572,10 @@ async function loadFiles() {
 }
 
 // ---- Modal ----
-function openEncodeModal(fileId, filename) {
+function openEncodeModal(fileId) {
+  const f = allFiles.find(x => x.id === fileId);
   pendingEncodeFileId = fileId;
-  document.getElementById('modal-filename').value = filename;
+  document.getElementById('modal-filename').value = f ? f.filename : '';
   document.getElementById('encode-modal').classList.add('open');
 }
 document.getElementById('modal-cancel').onclick = () => {
@@ -614,6 +618,11 @@ async function cancelFile(fileId) {
   const d = await r.json();
   if (!r.ok) alert(d.msg || 'Cancel failed');
 }
+
+document.getElementById('btn-clear-history').onclick = async () => {
+  await fetch('/api/jobs/clear', { method: 'POST' });
+  loadJobHistory();
+};
 
 document.getElementById('btn-scan').onclick = async () => {
   await fetch('/api/scan', {method:'POST'});
