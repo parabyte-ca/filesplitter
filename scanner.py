@@ -56,6 +56,8 @@ def scan_all() -> dict:
                         duration_sec=info.duration_sec,
                         codec=info.codec,
                         is_anthology=anthology,
+                        width=info.width,
+                        height=info.height,
                     )
                     found += 1
                     logger.info(

@@ -414,6 +414,10 @@
       <input id="modal-filename" type="text" readonly style="color:var(--muted)" />
     </div>
     <div class="form-group">
+      <label>Original Resolution</label>
+      <input id="modal-orig-res" type="text" readonly style="color:var(--muted)" />
+    </div>
+    <div class="form-group">
       <label>Output Resolution</label>
       <select id="modal-resolution"></select>
     </div>
@@ -628,6 +632,8 @@ function openEncodeModal(fileId) {
   const f = allFiles.find(x => x.id === fileId);
   pendingEncodeFileId = fileId;
   document.getElementById('modal-filename').value = f ? f.filename : '';
+  document.getElementById('modal-orig-res').value =
+    (f && f.width && f.height) ? `${f.width} × ${f.height}` : '—';
   document.getElementById('encode-modal').classList.add('open');
 }
 document.getElementById('modal-cancel').onclick = () => {
