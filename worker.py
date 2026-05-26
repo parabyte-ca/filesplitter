@@ -1,4 +1,5 @@
 import logging
+import os
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
@@ -6,6 +7,14 @@ import config
 import db
 import encoder
 import splitter
+
+
+def _fmt_bytes(n: int) -> str:
+    if n >= 1_000_000_000:
+        return f"{n / 1e9:.2f} GB"
+    if n >= 1_000_000:
+        return f"{n / 1e6:.1f} MB"
+    return f"{n / 1e3:.0f} KB"
 
 logger = logging.getLogger(__name__)
 
@@ -98,9 +107,17 @@ def _run_job(job: dict) -> None:
                 db.set_job_status(job_id, "cancelled")
                 db.update_job_progress(job_id, 0, "Cancelled by user")
             elif success:
+                orig_bytes = file_row["size_bytes"] or 0
+                new_bytes = os.path.getsize(input_path)
+                db.update_file_size(file_id, new_bytes)
+                savings_pct = (1 - new_bytes / orig_bytes) * 100 if orig_bytes else 0
+                done_msg = (
+                    f"Done — saved {savings_pct:.1f}%"
+                    f" ({_fmt_bytes(orig_bytes)} → {_fmt_bytes(new_bytes)})"
+                )
                 db.set_file_status(file_id, "done")
                 db.set_job_status(job_id, "done")
-                db.update_job_progress(job_id, 100.0, "Encoding complete")
+                db.update_job_progress(job_id, 100.0, done_msg)
             else:
                 err = last_log[0][:300] if last_log[0] else "Encoding failed"
                 db.set_file_status(file_id, "error", err)
