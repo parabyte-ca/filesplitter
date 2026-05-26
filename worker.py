@@ -110,14 +110,15 @@ def _run_job(job: dict) -> None:
                 orig_bytes = file_row["size_bytes"] or 0
                 new_bytes = os.path.getsize(input_path)
                 db.update_file_size(file_id, new_bytes)
-                savings_pct = (1 - new_bytes / orig_bytes) * 100 if orig_bytes else 0
+                saved = max(0, orig_bytes - new_bytes)
+                savings_pct = (saved / orig_bytes) * 100 if orig_bytes else 0
                 done_msg = (
                     f"Done — saved {savings_pct:.1f}%"
                     f" ({_fmt_bytes(orig_bytes)} → {_fmt_bytes(new_bytes)})"
                 )
                 db.set_file_status(file_id, "done")
                 db.set_job_status(job_id, "done")
-                db.update_job_progress(job_id, 100.0, done_msg)
+                db.update_job_progress(job_id, 100.0, done_msg, saved_bytes=saved)
             else:
                 err = last_log[0][:300] if last_log[0] else "Encoding failed"
                 db.set_file_status(file_id, "error", err)
