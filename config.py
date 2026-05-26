@@ -24,8 +24,8 @@ MEDIA_PATHS: list[str] = _parse_paths(os.environ.get("MEDIA_PATHS", "/media"))
 SCENE_THRESHOLD: float = float(os.environ.get("SCENE_THRESHOLD", "0.4"))
 MIN_SCENE_DURATION: int = int(os.environ.get("MIN_SCENE_DURATION", "120"))
 
-SPLIT_MIN_DURATION: int = int(os.environ.get("SPLIT_MIN_DURATION", "3600"))
-SPLIT_MIN_SIZE: int = int(os.environ.get("SPLIT_MIN_SIZE", str(4 * 1024 ** 3)))
+SPLIT_MIN_DURATION: int = int(os.environ.get("SPLIT_MIN_DURATION", "5400"))   # 90 min
+SPLIT_MIN_SIZE: int = int(os.environ.get("SPLIT_MIN_SIZE", str(2 * 1024 ** 3)))  # 2 GB
 SPLIT_KEYWORDS: list[str] = _parse_paths(
     os.environ.get("SPLIT_KEYWORDS", "Vol,Compilation,Anthology,Collection,Kink")
 )
