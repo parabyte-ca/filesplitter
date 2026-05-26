@@ -1,9 +1,19 @@
+import re
 import sqlite3
 import os
 from datetime import datetime, timezone
 from contextlib import contextmanager
 
 import config
+
+_LOG_SAVINGS_RE = re.compile(r'\(([0-9.]+) (GB|MB|KB) → ([0-9.]+) (GB|MB|KB)\)')
+
+
+def _parse_bytes_log(val: str, unit: str) -> int:
+    n = float(val)
+    if unit == 'GB': return int(n * 1_000_000_000)
+    if unit == 'MB': return int(n * 1_000_000)
+    return int(n * 1_000)
 
 
 def _now() -> str:
@@ -57,6 +67,20 @@ def init_db() -> None:
     conn.execute("ALTER TABLE files ADD COLUMN IF NOT EXISTS height INTEGER DEFAULT 0")
     # Add savings column if this is an existing DB from before v0.9.0
     conn.execute("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS saved_bytes INTEGER DEFAULT 0")
+    conn.commit()
+    # Backfill saved_bytes from log_tail for encode jobs that pre-date v0.9.0
+    rows = conn.execute(
+        "SELECT id, log_tail FROM jobs"
+        " WHERE status='done' AND job_type='encode' AND saved_bytes=0 AND log_tail IS NOT NULL"
+    ).fetchall()
+    for row in rows:
+        m = _LOG_SAVINGS_RE.search(row[1])
+        if m:
+            orig = _parse_bytes_log(m.group(1), m.group(2))
+            new  = _parse_bytes_log(m.group(3), m.group(4))
+            saved = max(0, orig - new)
+            if saved > 0:
+                conn.execute("UPDATE jobs SET saved_bytes=? WHERE id=?", (saved, row[0]))
     conn.commit()
     # Reset jobs left in running/processing state by a previous container crash
     conn.execute(
