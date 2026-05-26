@@ -481,7 +481,7 @@ async function loadJobHistory() {
         <td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(j.filename||'')}">${escHtml(j.filename||'—')}</td>
         <td><span class="badge badge-${j.status}">${j.status}</span></td>
         <td style="font-size:11px;color:var(--muted)">${j.finished_at ? j.finished_at.replace('T',' ').slice(0,16) : '—'}</td>
-        <td>${j.log_tail && j.status === 'error' ? `<details><summary style="font-size:11px;cursor:pointer;color:var(--muted)">Show log</summary><div class="history-log">${escHtml(j.log_tail)}</div></details>` : ''}</td>
+        <td>${historyLog(j)}</td>
       </tr>`).join('')}
     </tbody>
   </table>`;
@@ -501,6 +501,16 @@ function fmtSize(b) {
 }
 function escHtml(s) {
   return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function historyLog(j) {
+  if (!j.log_tail) return '';
+  if (j.status === 'error') {
+    return `<details><summary style="font-size:11px;cursor:pointer;color:var(--muted)">Show log</summary><div class="history-log">${escHtml(j.log_tail)}</div></details>`;
+  }
+  if (j.status === 'done' && j.job_type === 'encode') {
+    return `<span style="font-size:11px;color:var(--green)">${escHtml(j.log_tail)}</span>`;
+  }
+  return '';
 }
 
 function renderFiles() {

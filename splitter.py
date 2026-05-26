@@ -5,7 +5,9 @@ import logging
 from collections.abc import Callable
 
 import codec_detector
+import config
 import scene_detector
+import scene_namer
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +17,15 @@ def _format_ts(seconds: float) -> str:
     m = int((seconds % 3600) // 60)
     s = seconds % 60
     return f"{h:02d}:{m:02d}:{s:06.3f}"
+
+
+def _scene_path(directory: str, stem: str, ext: str, index: int, online_names: list | None) -> str:
+    """Generate output path for scene `index` (0-based), using online name if available."""
+    if online_names:
+        name = scene_namer.sanitize(online_names[index])
+        return os.path.join(directory, f"{index + 1:02d} - {name}{ext}")
+    base = os.path.basename(stem)
+    return os.path.join(directory, f"{base} {index + 1:02d}{ext}")
 
 
 def split_by_scenes(
@@ -56,9 +67,30 @@ def split_by_scenes(
 
     boundaries = [0.0] + scene_cuts + [probe.duration_sec]
     segments = list(zip(boundaries[:-1], boundaries[1:]))
-
-    output_paths: list[str] = []
     total = len(segments)
+
+    # --- Online scene naming ---
+    online_names = None
+    if config.TPDB_API_KEY:
+        if progress_cb:
+            progress_cb(34.0, "Identifying scenes online…")
+        online_names = scene_namer.get_scene_names(
+            input_path,
+            segments,
+            config.TPDB_API_KEY,
+            cancel_event=cancel_event,
+            progress_cb=progress_cb,
+        )
+        if cancel_event and cancel_event.is_set():
+            return None
+
+    if online_names:
+        logger.info("Online scene names found for %s", os.path.basename(input_path))
+    else:
+        logger.info("No online scene names — using numbered fallback for %s", os.path.basename(input_path))
+
+    # --- Split segments ---
+    output_paths: list[str] = []
 
     for i, (start, end) in enumerate(segments):
         if cancel_event and cancel_event.is_set():
@@ -66,7 +98,7 @@ def split_by_scenes(
             _cleanup_files(output_paths)
             return None
 
-        out_path = os.path.join(directory, f"{os.path.basename(stem)}_scene_{i + 1:03d}{ext}")
+        out_path = _scene_path(directory, stem, ext, i, online_names)
         output_paths.append(out_path)
 
         cmd = [
@@ -89,13 +121,13 @@ def split_by_scenes(
         if result.returncode != 0:
             err_msg = result.stderr.strip()[-300:] if result.stderr.strip() else "ffmpeg split failed"
             logger.error("Split failed segment %d: %s", i + 1, err_msg)
-            pct = 35.0 + i / total * 57.0
+            pct = 37.0 + i / total * 55.0
             if progress_cb:
                 progress_cb(pct, f"ERROR: Segment {i + 1}/{total} failed — {err_msg}")
             _cleanup_files(output_paths)
             return None
 
-        pct = 35.0 + (i + 1) / total * 57.0
+        pct = 37.0 + (i + 1) / total * 55.0
         if progress_cb:
             progress_cb(pct, f"Split {i + 1}/{total}: {os.path.basename(out_path)}")
 

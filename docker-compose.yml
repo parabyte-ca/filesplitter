@@ -43,6 +43,10 @@ services:
 
       DATABASE_PATH: /app/data/filesplitter.db
 
+      # ThePornDB API key — enables content-based scene identification when splitting.
+      # Free registration: https://theporndb.net/register
+      TPDB_API_KEY: ""
+
       # --- NVIDIA GPU (NVENC) encoding ---
       # Uncomment ENCODER_BACKEND below and the deploy block to enable GPU encoding.
       # Requires: NVIDIA drivers installed on the TrueNAS host + nvidia-container-toolkit.

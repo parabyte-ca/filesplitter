@@ -200,6 +200,14 @@ def get_recent_jobs(limit: int = 20) -> list[sqlite3.Row]:
         """, (limit,)).fetchall()
 
 
+def update_file_size(file_id: int, size_bytes: int) -> None:
+    with connect() as conn:
+        conn.execute(
+            "UPDATE files SET size_bytes=?, updated_at=? WHERE id=?",
+            (size_bytes, _now(), file_id),
+        )
+
+
 def update_job_progress(job_id: int, progress_pct: float, log_tail: str = None) -> None:
     with connect() as conn:
         conn.execute(
