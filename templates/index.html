@@ -261,6 +261,7 @@
         <option value="normal">Normal</option>
       </select>
       <div class="toolbar-spacer"></div>
+      <button class="btn btn-sm" id="btn-purge">Purge Missing</button>
       <button class="btn btn-sm" id="btn-queue-all-encode">Queue All (Encode)</button>
       <button class="btn btn-sm" id="btn-queue-all-split">Queue All Anthologies (Split)</button>
     </div>
@@ -639,6 +640,14 @@ async function cancelFile(fileId) {
   const d = await r.json();
   if (!r.ok) alert(d.msg || 'Cancel failed');
 }
+
+document.getElementById('btn-purge').onclick = async () => {
+  if (!confirm('Remove all database records for files that no longer exist on disk?')) return;
+  const r = await fetch('/api/files/purge', {method: 'POST'});
+  const data = await r.json();
+  await loadFiles();
+  alert(`Removed ${data.removed} missing file record${data.removed !== 1 ? 's' : ''}.`);
+};
 
 document.getElementById('btn-clear-history').onclick = async () => {
   await fetch('/api/jobs/clear', { method: 'POST' });

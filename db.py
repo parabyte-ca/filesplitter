@@ -183,6 +183,19 @@ def get_active_jobs() -> list[sqlite3.Row]:
         """).fetchall()
 
 
+def purge_missing_files() -> int:
+    """Delete records for files whose path no longer exists on disk. Returns count removed."""
+    with connect() as conn:
+        rows = conn.execute("SELECT id, path FROM files").fetchall()
+        missing_ids = [r["id"] for r in rows if not os.path.exists(r["path"])]
+        if not missing_ids:
+            return 0
+        placeholders = ",".join("?" * len(missing_ids))
+        conn.execute(f"DELETE FROM jobs WHERE file_id IN ({placeholders})", missing_ids)
+        conn.execute(f"DELETE FROM files WHERE id IN ({placeholders})", missing_ids)
+        return len(missing_ids)
+
+
 def clear_finished_jobs() -> int:
     with connect() as conn:
         cur = conn.execute(
