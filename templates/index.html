@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FileSplitter</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --border: #2a2d3a;
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --accent: #6366f1;
+    --green: #22c55e;
+    --yellow: #eab308;
+    --red: #ef4444;
+    --orange: #f97316;
+    --blue: #3b82f6;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; font-size: 14px; }
+  a { color: var(--accent); text-decoration: none; }
+
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 24px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  header h1 { font-size: 18px; font-weight: 700; }
+  header .subtitle { color: var(--muted); font-size: 12px; }
+  header .spacer { flex: 1; }
+  .btn {
+    padding: 6px 14px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    cursor: pointer;
+    font-size: 13px;
+    transition: background 0.15s;
+  }
+  .btn:hover { background: var(--border); }
+  .btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn-primary:hover { background: #4f52d0; }
+  .btn-danger { background: var(--red); border-color: var(--red); color: #fff; }
+  .btn-sm { padding: 4px 10px; font-size: 12px; }
+
+  .container { max-width: 1400px; margin: 0 auto; padding: 24px; }
+
+  .stats-bar {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px;
+    text-align: center;
+  }
+  .stat-card .num { font-size: 28px; font-weight: 700; }
+  .stat-card .label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 4px; }
+
+  .section { margin-bottom: 28px; }
+  .section-title { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 12px; }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+
+  table { width: 100%; border-collapse: collapse; }
+  th { padding: 10px 14px; text-align: left; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); border-bottom: 1px solid var(--border); }
+  td { padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(255,255,255,0.02); }
+
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .badge-done { background: rgba(34,197,94,0.15); color: var(--green); }
+  .badge-error { background: rgba(239,68,68,0.15); color: var(--red); }
+  .badge-processing { background: rgba(99,102,241,0.15); color: var(--accent); }
+  .badge-queued { background: rgba(234,179,8,0.15); color: var(--yellow); }
+  .badge-pending { background: rgba(100,116,139,0.15); color: var(--muted); }
+  .badge-skipped { background: rgba(100,116,139,0.1); color: var(--muted); }
+  .badge-anthology { background: rgba(249,115,22,0.15); color: var(--orange); }
+  .badge-x265 { background: rgba(34,197,94,0.1); color: var(--green); }
+
+  .progress-bar { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; margin-top: 4px; }
+  .progress-fill { height: 100%; background: var(--accent); border-radius: 3px; transition: width 0.4s; }
+
+  .job-card { padding: 14px; border-bottom: 1px solid var(--border); }
+  .job-card:last-child { border-bottom: none; }
+  .job-header { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+  .job-filename { font-weight: 500; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .job-log { font-family: monospace; font-size: 11px; color: var(--muted); background: var(--bg); border-radius: 4px; padding: 6px 8px; margin-top: 6px; max-height: 60px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
+
+  .empty { color: var(--muted); padding: 24px; text-align: center; }
+
+  .toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
+  .toolbar-spacer { flex: 1; }
+  .search-input {
+    padding: 6px 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 13px;
+    width: 240px;
+  }
+  .search-input:focus { outline: none; border-color: var(--accent); }
+
+  .filter-select {
+    padding: 6px 10px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 13px;
+  }
+  .filter-select:focus { outline: none; border-color: var(--accent); }
+
+  /* Modal */
+  .modal-overlay {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 24px;
+    width: 380px;
+    max-width: 95vw;
+  }
+  .modal h3 { font-size: 16px; margin-bottom: 16px; }
+  .form-group { margin-bottom: 14px; }
+  .form-group label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  .form-group select, .form-group input {
+    width: 100%;
+    padding: 8px 10px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 13px;
+  }
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
+
+  /* Settings panel */
+  .settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 640px) { .settings-grid { grid-template-columns: 1fr; } }
+
+  .tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
+  .tab {
+    padding: 10px 18px;
+    font-size: 13px;
+    cursor: pointer;
+    color: var(--muted);
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+  }
+  .tab.active { color: var(--text); border-bottom-color: var(--accent); }
+
+  .tab-pane { display: none; }
+  .tab-pane.active { display: block; }
+
+  .path-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 12px;
+    margin: 4px;
+  }
+  .path-tag button { background: none; border: none; color: var(--red); cursor: pointer; font-size: 14px; line-height: 1; }
+
+  .indicator { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .indicator-green { background: var(--green); }
+  .indicator-yellow { background: var(--yellow); animation: pulse 1.5s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1}50%{opacity:0.4} }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>FileSplitter</h1>
+    <div class="subtitle">Video encoder &amp; scene splitter &nbsp;·&nbsp; v{{ version }}</div>
+  </div>
+  <div class="spacer"></div>
+  <span id="queue-indicator" class="indicator indicator-green" title="Queue running"></span>
+  <button class="btn" id="btn-pause">Pause Queue</button>
+  <button class="btn btn-primary" id="btn-scan">Scan Now</button>
+</header>
+
+<div class="container">
+
+  <!-- Stats bar -->
+  <div class="stats-bar">
+    <div class="stat-card"><div class="num" id="s-total">—</div><div class="label">Total Files</div></div>
+    <div class="stat-card"><div class="num" id="s-pending">—</div><div class="label">Pending</div></div>
+    <div class="stat-card"><div class="num" id="s-queued">—</div><div class="label">Queued</div></div>
+    <div class="stat-card"><div class="num" id="s-processing">—</div><div class="label">Processing</div></div>
+    <div class="stat-card"><div class="num" id="s-done">—</div><div class="label">Done</div></div>
+    <div class="stat-card"><div class="num" id="s-errors">—</div><div class="label">Errors</div></div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <div class="tab active" data-tab="files">Files</div>
+    <div class="tab" data-tab="jobs">Active Jobs</div>
+    <div class="tab" data-tab="settings">Settings</div>
+  </div>
+
+  <!-- Files tab -->
+  <div class="tab-pane active" id="tab-files">
+    <div class="toolbar">
+      <input class="search-input" id="search" placeholder="Search filename…" />
+      <select class="filter-select" id="filter-status">
+        <option value="">All statuses</option>
+        <option value="pending">Pending</option>
+        <option value="queued">Queued</option>
+        <option value="processing">Processing</option>
+        <option value="done">Done</option>
+        <option value="error">Error</option>
+        <option value="skipped">Skipped</option>
+      </select>
+      <select class="filter-select" id="filter-type">
+        <option value="">All types</option>
+        <option value="anthology">Anthologies</option>
+        <option value="normal">Normal</option>
+      </select>
+      <div class="toolbar-spacer"></div>
+      <button class="btn btn-sm" id="btn-queue-all-encode">Queue All (Encode)</button>
+      <button class="btn btn-sm" id="btn-queue-all-split">Queue All Anthologies (Split)</button>
+    </div>
+    <div class="card">
+      <table id="files-table">
+        <thead>
+          <tr>
+            <th>Filename</th>
+            <th>Codec</th>
+            <th>Duration</th>
+            <th>Size</th>
+            <th>Type</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="files-body">
+          <tr><td colspan="7" class="empty">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Jobs tab -->
+  <div class="tab-pane" id="tab-jobs">
+    <div class="card" id="jobs-container">
+      <div class="empty">No active jobs</div>
+    </div>
+  </div>
+
+  <!-- Settings tab -->
+  <div class="tab-pane" id="tab-settings">
+    <div class="card" style="padding: 20px;">
+      <div class="section">
+        <div class="section-title">Scan Paths</div>
+        <div id="paths-container"></div>
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <input class="search-input" id="new-path" placeholder="/mnt/shared_vol/other" style="flex:1" />
+          <button class="btn" id="btn-add-path">Add Path</button>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:6px">Paths are read by the container — make sure they are mounted as volumes.</div>
+      </div>
+
+      <!-- Encoder backend -->
+      <div class="section" style="margin-top:20px">
+        <div class="section-title">Encoder</div>
+        <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+          <div class="form-group" style="margin:0;flex:1;min-width:200px">
+            <label>Backend</label>
+            <select id="s-backend" class="filter-select" style="width:100%">
+              <option value="cpu">CPU (libx265)</option>
+              <option value="nvenc">GPU (NVENC · hevc_nvenc)</option>
+            </select>
+          </div>
+          <div style="padding-top:18px">
+            <span id="gpu-badge" class="badge" style="font-size:12px"></span>
+          </div>
+        </div>
+        <div id="nvenc-tip" style="display:none;font-size:11px;color:var(--yellow);margin-top:6px">
+          NVENC not detected — jobs will automatically fall back to CPU. Check that the GPU is passed through in docker-compose.yml.
+        </div>
+        <div id="nvenc-ok-tip" style="display:none;font-size:11px;color:var(--green);margin-top:6px">
+          GPU detected. NVENC is 5–10× faster than CPU. Recommended CQ: 22–24 (equivalent to libx265 CRF 28).
+        </div>
+      </div>
+
+      <div class="settings-grid" style="margin-top:16px">
+        <div class="form-group">
+          <label>Default Output Resolution</label>
+          <select id="s-resolution" class="filter-select" style="width:100%"></select>
+        </div>
+        <div class="form-group">
+          <label id="s-crf-label">CRF — libx265 quality (18=high · 28=good · 35=smaller)</label>
+          <input type="number" id="s-crf" min="0" max="51" />
+        </div>
+        <div class="form-group">
+          <label id="s-preset-label">Preset</label>
+          <select id="s-preset" class="filter-select" style="width:100%"></select>
+        </div>
+        <div class="form-group">
+          <label>Scene Detection Threshold (0.0–1.0)</label>
+          <input type="number" id="s-scene-threshold" step="0.05" min="0" max="1" />
+        </div>
+        <div class="form-group">
+          <label>Min Scene Duration (seconds)</label>
+          <input type="number" id="s-min-scene" min="10" />
+        </div>
+        <div class="form-group">
+          <label>Anthology Min Duration (seconds, e.g. 3600 = 1hr)</label>
+          <input type="number" id="s-split-dur" min="60" />
+        </div>
+        <div class="form-group">
+          <label>Anthology Min File Size (bytes, e.g. 4294967296 = 4GB)</label>
+          <input type="number" id="s-split-size" min="0" />
+        </div>
+      </div>
+      <div style="margin-top:16px">
+        <button class="btn btn-primary" id="btn-save-settings">Save Settings</button>
+        <span id="settings-msg" style="margin-left:12px;font-size:12px;color:var(--green)"></span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Encode Modal -->
+<div class="modal-overlay" id="encode-modal">
+  <div class="modal">
+    <h3>Queue Encode Job</h3>
+    <div class="form-group">
+      <label>File</label>
+      <input id="modal-filename" type="text" readonly style="color:var(--muted)" />
+    </div>
+    <div class="form-group">
+      <label>Output Resolution</label>
+      <select id="modal-resolution"></select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" id="modal-cancel">Cancel</button>
+      <button class="btn btn-primary" id="modal-confirm">Queue</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ---- State ----
+let allFiles = [];
+let resolutions = ['original'];
+let pendingEncodeFileId = null;
+let isPaused = false;
+
+// ---- SSE ----
+const es = new EventSource('/stream');
+es.onmessage = (e) => {
+  const data = JSON.parse(e.data);
+  updateStats(data.stats);
+  updateJobs(data.active_jobs);
+  isPaused = data.paused;
+  document.getElementById('btn-pause').textContent = isPaused ? 'Resume Queue' : 'Pause Queue';
+  document.getElementById('queue-indicator').className = 'indicator ' + (isPaused ? 'indicator-yellow' : 'indicator-green');
+  if (data.scan_running) {
+    document.getElementById('btn-scan').textContent = 'Scanning…';
+    document.getElementById('btn-scan').disabled = true;
+  } else {
+    document.getElementById('btn-scan').textContent = 'Scan Now';
+    document.getElementById('btn-scan').disabled = false;
+  }
+};
+
+// ---- Stats ----
+function updateStats(s) {
+  if (!s) return;
+  document.getElementById('s-total').textContent = s.total ?? 0;
+  document.getElementById('s-pending').textContent = s.pending ?? 0;
+  document.getElementById('s-queued').textContent = s.queued ?? 0;
+  document.getElementById('s-processing').textContent = s.processing ?? 0;
+  document.getElementById('s-done').textContent = s.done ?? 0;
+  document.getElementById('s-errors').textContent = s.errors ?? 0;
+}
+
+// ---- Jobs ----
+function updateJobs(jobs) {
+  const c = document.getElementById('jobs-container');
+  if (!jobs || jobs.length === 0) {
+    c.innerHTML = '<div class="empty">No active jobs</div>';
+    return;
+  }
+  c.innerHTML = jobs.map(j => `
+    <div class="job-card">
+      <div class="job-header">
+        <span class="badge badge-${j.status}">${j.type}</span>
+        <span class="job-filename" title="${j.file}">${j.file}</span>
+        <span style="font-size:12px;color:var(--muted)">${j.progress}%</span>
+      </div>
+      <div class="progress-bar"><div class="progress-fill" style="width:${j.progress}%"></div></div>
+      ${j.log ? `<div class="job-log">${escHtml(j.log)}</div>` : ''}
+    </div>
+  `).join('');
+}
+
+// ---- Files ----
+function fmtDur(s) {
+  if (!s) return '—';
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = Math.floor(s % 60);
+  return h > 0 ? `${h}h ${m}m` : `${m}m ${ss}s`;
+}
+function fmtSize(b) {
+  if (!b) return '—';
+  if (b >= 1e9) return (b / 1e9).toFixed(1) + ' GB';
+  if (b >= 1e6) return (b / 1e6).toFixed(1) + ' MB';
+  return (b / 1e3).toFixed(0) + ' KB';
+}
+function escHtml(s) {
+  return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function renderFiles() {
+  const q = document.getElementById('search').value.toLowerCase();
+  const fs = document.getElementById('filter-status').value;
+  const ft = document.getElementById('filter-type').value;
+
+  let rows = allFiles.filter(f => {
+    if (q && !f.filename.toLowerCase().includes(q)) return false;
+    if (fs && f.status !== fs) return false;
+    if (ft === 'anthology' && !f.is_anthology) return false;
+    if (ft === 'normal' && f.is_anthology) return false;
+    return true;
+  });
+
+  const body = document.getElementById('files-body');
+  if (rows.length === 0) {
+    body.innerHTML = '<tr><td colspan="7" class="empty">No files found</td></tr>';
+    return;
+  }
+
+  body.innerHTML = rows.map(f => {
+    const statusBadge = `<span class="badge badge-${f.status}">${f.status}</span>`;
+    const typeBadge = f.is_anthology
+      ? '<span class="badge badge-anthology">Anthology</span>'
+      : `<span class="badge badge-${f.codec === 'hevc' ? 'x265' : 'pending'}">${escHtml(f.codec || '?')}</span>`;
+
+    const actions = [];
+    if (f.status !== 'processing') {
+      if (f.codec !== 'hevc') {
+        actions.push(`<button class="btn btn-sm" onclick="openEncodeModal(${f.id}, '${escHtml(f.filename)}')">Encode</button>`);
+      }
+      if (f.is_anthology) {
+        actions.push(`<button class="btn btn-sm" onclick="queueJob(${f.id}, 'split')">Split</button>`);
+      }
+      if (f.status !== 'skipped') {
+        actions.push(`<button class="btn btn-sm" onclick="skipFile(${f.id})">Skip</button>`);
+      }
+    }
+
+    return `<tr>
+      <td title="${escHtml(f.path)}" style="max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(f.filename)}</td>
+      <td><code style="font-size:11px">${escHtml(f.codec || '?')}</code></td>
+      <td>${fmtDur(f.duration_sec)}</td>
+      <td>${fmtSize(f.size_bytes)}</td>
+      <td>${typeBadge}</td>
+      <td>${statusBadge}</td>
+      <td style="white-space:nowrap">${actions.join(' ')}</td>
+    </tr>`;
+  }).join('');
+}
+
+async function loadFiles() {
+  const r = await fetch('/api/files');
+  allFiles = await r.json();
+  renderFiles();
+}
+
+// ---- Modal ----
+function openEncodeModal(fileId, filename) {
+  pendingEncodeFileId = fileId;
+  document.getElementById('modal-filename').value = filename;
+  document.getElementById('encode-modal').classList.add('open');
+}
+document.getElementById('modal-cancel').onclick = () => {
+  document.getElementById('encode-modal').classList.remove('open');
+};
+document.getElementById('encode-modal').onclick = (e) => {
+  if (e.target === document.getElementById('encode-modal'))
+    document.getElementById('encode-modal').classList.remove('open');
+};
+document.getElementById('modal-confirm').onclick = async () => {
+  const res = document.getElementById('modal-resolution').value;
+  await queueJob(pendingEncodeFileId, 'encode', res);
+  document.getElementById('encode-modal').classList.remove('open');
+};
+
+// ---- Actions ----
+async function queueJob(fileId, type, resolution) {
+  resolution = resolution || document.getElementById('s-resolution')?.value || 'original';
+  const r = await fetch('/api/queue', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({file_id: fileId, job_type: type, target_resolution: resolution}),
+  });
+  if (r.ok) await loadFiles();
+}
+
+async function skipFile(fileId) {
+  const r = await fetch(`/api/skip/${fileId}`, { method: 'POST' });
+  if (r.ok) await loadFiles();
+}
+
+document.getElementById('btn-scan').onclick = async () => {
+  await fetch('/api/scan', {method:'POST'});
+  setTimeout(loadFiles, 2000);
+};
+
+document.getElementById('btn-pause').onclick = async () => {
+  await fetch(isPaused ? '/api/queue/resume' : '/api/queue/pause', {method:'POST'});
+};
+
+document.getElementById('btn-queue-all-encode').onclick = async () => {
+  const pending = allFiles.filter(f => f.status === 'pending' && f.codec !== 'hevc');
+  for (const f of pending) await queueJob(f.id, 'encode');
+  await loadFiles();
+};
+
+document.getElementById('btn-queue-all-split').onclick = async () => {
+  const pending = allFiles.filter(f => f.status === 'pending' && f.is_anthology);
+  for (const f of pending) await queueJob(f.id, 'split');
+  await loadFiles();
+};
+
+// ---- Settings ----
+let _cpuPresets = ['ultrafast','superfast','veryfast','faster','fast','medium','slow','slower','veryslow'];
+let _nvencPresets = ['fast','medium','slow','hq','hp'];
+let _nvencAvailable = false;
+
+function _updateEncoderUI(backend) {
+  const isNvenc = backend === 'nvenc';
+  const presets = isNvenc ? _nvencPresets : _cpuPresets;
+  const currentPreset = document.getElementById('s-preset').value || 'medium';
+  document.getElementById('s-preset').innerHTML = presets.map(p =>
+    `<option value="${p}" ${p === currentPreset ? 'selected' : ''}>${p}</option>`
+  ).join('');
+  const crfLabel = document.getElementById('s-crf-label');
+  crfLabel.textContent = isNvenc
+    ? 'CQ — NVENC quality (0=lossless · 22=high · 28=good · 35=smaller)'
+    : 'CRF — libx265 quality (18=high · 28=good · 35=smaller)';
+  document.getElementById('s-preset-label').textContent = isNvenc ? 'NVENC Preset' : 'x265 Preset';
+
+  const badge = document.getElementById('gpu-badge');
+  const nvencTip = document.getElementById('nvenc-tip');
+  const nvencOkTip = document.getElementById('nvenc-ok-tip');
+  if (isNvenc) {
+    if (_nvencAvailable) {
+      badge.className = 'badge badge-done'; badge.textContent = 'GPU detected ✓';
+      nvencTip.style.display = 'none'; nvencOkTip.style.display = 'block';
+    } else {
+      badge.className = 'badge badge-error'; badge.textContent = 'GPU not found ✗';
+      nvencTip.style.display = 'block'; nvencOkTip.style.display = 'none';
+    }
+  } else {
+    badge.className = ''; badge.textContent = '';
+    nvencTip.style.display = 'none'; nvencOkTip.style.display = 'none';
+  }
+}
+
+async function loadSettings() {
+  const r = await fetch('/api/settings');
+  const s = await r.json();
+  resolutions = s.resolutions || ['original'];
+  _nvencAvailable = s.nvenc_available || false;
+  if (s.cpu_presets) _cpuPresets = s.cpu_presets;
+  if (s.nvenc_presets) _nvencPresets = s.nvenc_presets;
+
+  // Populate resolution dropdowns
+  const opts = resolutions.map(r => `<option value="${r}" ${r === s.target_resolution ? 'selected' : ''}>${r}</option>`).join('');
+  document.getElementById('s-resolution').innerHTML = opts;
+  document.getElementById('modal-resolution').innerHTML = opts;
+
+  // Encoder backend
+  const backend = s.encoder_backend || 'cpu';
+  document.getElementById('s-backend').value = backend;
+  _updateEncoderUI(backend);
+
+  document.getElementById('s-crf').value = s.x265_crf;
+  // Set preset after presets are populated by _updateEncoderUI
+  document.getElementById('s-preset').value = s.x265_preset || 'medium';
+  document.getElementById('s-scene-threshold').value = s.scene_threshold;
+  document.getElementById('s-min-scene').value = s.min_scene_duration;
+  document.getElementById('s-split-dur').value = s.split_min_duration;
+  document.getElementById('s-split-size').value = s.split_min_size;
+
+  renderPaths(s.media_paths || []);
+}
+
+document.getElementById('s-backend').onchange = (e) => _updateEncoderUI(e.target.value);
+
+function renderPaths(paths) {
+  const c = document.getElementById('paths-container');
+  c.innerHTML = paths.map(p => `
+    <span class="path-tag">
+      ${escHtml(p)}
+      <button onclick="removePath('${escHtml(p)}')" title="Remove">×</button>
+    </span>
+  `).join('');
+}
+
+async function removePath(path) {
+  // For simplicity, notify user to edit env and restart
+  alert('To remove a path, update MEDIA_PATHS in docker-compose.yml and restart the container.');
+}
+
+document.getElementById('btn-add-path').onclick = () => {
+  alert('To add a path, update MEDIA_PATHS in docker-compose.yml and restart the container.\n\nCurrent paths are set via the MEDIA_PATHS environment variable (comma-separated).');
+};
+
+document.getElementById('btn-save-settings').onclick = async () => {
+  const body = {
+    encoder_backend: document.getElementById('s-backend').value,
+    target_resolution: document.getElementById('s-resolution').value,
+    x265_crf: parseInt(document.getElementById('s-crf').value),
+    x265_preset: document.getElementById('s-preset').value,
+    scene_threshold: parseFloat(document.getElementById('s-scene-threshold').value),
+    min_scene_duration: parseInt(document.getElementById('s-min-scene').value),
+    split_min_duration: parseInt(document.getElementById('s-split-dur').value),
+    split_min_size: parseInt(document.getElementById('s-split-size').value),
+  };
+  const r = await fetch('/api/settings', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(body),
+  });
+  const msg = document.getElementById('settings-msg');
+  if (r.ok) {
+    msg.textContent = 'Saved!';
+    setTimeout(() => msg.textContent = '', 3000);
+  } else {
+    msg.style.color = 'var(--red)';
+    msg.textContent = 'Error saving';
+  }
+};
+
+// ---- Tabs ----
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.onclick = () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+  };
+});
+
+// ---- Search/filter ----
+document.getElementById('search').oninput = renderFiles;
+document.getElementById('filter-status').onchange = renderFiles;
+document.getElementById('filter-type').onchange = renderFiles;
+
+// ---- Init ----
+loadSettings();
+loadFiles();
+setInterval(loadFiles, 10000);
+</script>
+</body>
+</html>

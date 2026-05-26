@@ -1,0 +1,67 @@
+services:
+  filesplitter:
+    build:
+      context: .
+      args:
+        VERSION: ${VERSION:-dev}
+    ports:
+      - "4250:4250"
+    volumes:
+      # Primary media path — Bellesa library
+      - /mnt/shared_vol/adult/Bellesa:/media/bellesa
+      # Add more volume mounts here for additional libraries, e.g.:
+      # - /mnt/shared_vol/adult/OtherStudio:/media/otherstudio
+      #
+      # Persistent data (SQLite database)
+      - ./data:/app/data
+    environment:
+      # Comma-separated list of paths inside the container to scan
+      MEDIA_PATHS: /media/bellesa
+      # Add more paths here when you add volume mounts above, e.g.:
+      # MEDIA_PATHS: /media/bellesa,/media/otherstudio
+
+      # Port (4250 preferred; auto-increments if occupied)
+      FLASK_PORT: "4250"
+
+      # Scene detection sensitivity (0.0=everything, 1.0=nothing; 0.4 is a good default)
+      SCENE_THRESHOLD: "0.4"
+      # Minimum gap between split points in seconds (prevents micro-clips)
+      MIN_SCENE_DURATION: "120"
+
+      # Anthology detection thresholds (any one criterion triggers split eligibility)
+      SPLIT_MIN_DURATION: "3600"          # 60 minutes
+      SPLIT_MIN_SIZE: "4294967296"        # 4 GB
+      SPLIT_KEYWORDS: "Vol,Compilation,Anthology,Collection,Kink"
+
+      # x265 encoding defaults (overridable per-job from the UI)
+      X265_CRF: "28"
+      X265_PRESET: "medium"
+      TARGET_RESOLUTION: "original"      # original | 480p | 720p | 1080p | 1440p | 2160p
+
+      # Max simultaneous ffmpeg jobs (keep low to avoid overwhelming the NAS)
+      MAX_WORKERS: "2"
+
+      DATABASE_PATH: /app/data/filesplitter.db
+
+      # --- NVIDIA GPU (NVENC) encoding ---
+      # Uncomment ENCODER_BACKEND below and the deploy block to enable GPU encoding.
+      # Requires: NVIDIA drivers installed on the TrueNAS host + nvidia-container-toolkit.
+      # GPU encoding is 5-10x faster than CPU. Use CQ 22-24 for quality equivalent to CRF 28.
+      # ENCODER_BACKEND: nvenc
+
+    # --- Uncomment this block to pass the GPU through to the container ---
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu, video]
+
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4250/api/version')"]
+      interval: 30s
+      timeout: 10s
+      start_period: 20s
+      retries: 3
