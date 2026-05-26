@@ -55,6 +55,8 @@ def init_db() -> None:
     # Add resolution columns if this is an existing DB from before v0.8.9
     conn.execute("ALTER TABLE files ADD COLUMN IF NOT EXISTS width INTEGER DEFAULT 0")
     conn.execute("ALTER TABLE files ADD COLUMN IF NOT EXISTS height INTEGER DEFAULT 0")
+    # Add savings column if this is an existing DB from before v0.9.0
+    conn.execute("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS saved_bytes INTEGER DEFAULT 0")
     conn.commit()
     # Reset jobs left in running/processing state by a previous container crash
     conn.execute(
@@ -162,7 +164,13 @@ def get_stats() -> dict:
                 SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) as pending
             FROM files
         """).fetchone()
-        return dict(row) if row else {}
+        saved = conn.execute(
+            "SELECT COALESCE(SUM(saved_bytes), 0) as total_saved_bytes"
+            " FROM jobs WHERE status='done' AND job_type='encode'"
+        ).fetchone()
+        result = dict(row) if row else {}
+        result["total_saved_bytes"] = saved["total_saved_bytes"] if saved else 0
+        return result
 
 
 # --- Jobs ---
@@ -225,12 +233,19 @@ def update_file_size(file_id: int, size_bytes: int) -> None:
         )
 
 
-def update_job_progress(job_id: int, progress_pct: float, log_tail: str = None) -> None:
+def update_job_progress(job_id: int, progress_pct: float, log_tail: str = None,
+                        saved_bytes: int = None) -> None:
     with connect() as conn:
-        conn.execute(
-            "UPDATE jobs SET progress_pct=?, log_tail=? WHERE id=?",
-            (progress_pct, log_tail, job_id),
-        )
+        if saved_bytes is not None:
+            conn.execute(
+                "UPDATE jobs SET progress_pct=?, log_tail=?, saved_bytes=? WHERE id=?",
+                (progress_pct, log_tail, saved_bytes, job_id),
+            )
+        else:
+            conn.execute(
+                "UPDATE jobs SET progress_pct=?, log_tail=? WHERE id=?",
+                (progress_pct, log_tail, job_id),
+            )
 
 
 def set_job_status(job_id: int, status: str) -> None:

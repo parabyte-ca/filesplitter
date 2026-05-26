@@ -252,6 +252,7 @@
     <div class="stat-card"><div class="num" id="s-processing">—</div><div class="label">Processing</div></div>
     <div class="stat-card"><div class="num" id="s-done">—</div><div class="label">Done</div></div>
     <div class="stat-card"><div class="num" id="s-errors">—</div><div class="label">Errors</div></div>
+    <div class="stat-card"><div class="num" id="s-saved" style="color:var(--green)">—</div><div class="label">Space Saved</div></div>
   </div>
 
   <!-- Tabs -->
@@ -456,6 +457,14 @@ es.onmessage = (e) => {
 };
 
 // ---- Stats ----
+function fmtSaved(bytes) {
+  if (!bytes) return '0 GB';
+  if (bytes >= 1e12) return (bytes / 1e12).toFixed(2) + ' TB';
+  if (bytes >= 1e9)  return (bytes / 1e9).toFixed(2) + ' GB';
+  if (bytes >= 1e6)  return (bytes / 1e6).toFixed(1) + ' MB';
+  return (bytes / 1e3).toFixed(0) + ' KB';
+}
+
 function updateStats(s) {
   if (!s) return;
   document.getElementById('s-total').textContent = s.total ?? 0;
@@ -464,6 +473,7 @@ function updateStats(s) {
   document.getElementById('s-processing').textContent = s.processing ?? 0;
   document.getElementById('s-done').textContent = s.done ?? 0;
   document.getElementById('s-errors').textContent = s.errors ?? 0;
+  document.getElementById('s-saved').textContent = fmtSaved(s.total_saved_bytes ?? 0);
 }
 
 // ---- Jobs ----
