@@ -4,7 +4,8 @@ import time
 import threading
 from pathlib import Path
 
-from flask import Flask, jsonify, render_template, request, Response, stream_with_context
+from flask import (Flask, jsonify, render_template, render_template_string,
+                   request, Response, redirect, session, stream_with_context)
 
 import config
 import db
@@ -20,6 +21,77 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
+
+_LOGIN_TEMPLATE = """<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>FileSplitter — Login</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#0f0f13;color:#e0e0e0;font-family:system-ui,sans-serif;
+       display:flex;align-items:center;justify-content:center;min-height:100vh}
+  .card{background:#1a1a24;border:1px solid #2a2a3a;border-radius:12px;padding:32px;
+        width:100%;max-width:360px}
+  h2{font-size:20px;margin-bottom:4px;color:#fff}
+  .sub{font-size:12px;color:#888;margin-bottom:24px}
+  label{display:block;font-size:12px;color:#aaa;margin-bottom:6px}
+  input[type=password]{width:100%;padding:10px 12px;background:#0f0f13;border:1px solid #2a2a3a;
+    border-radius:8px;color:#e0e0e0;font-size:14px;outline:none}
+  input[type=password]:focus{border-color:#6c63ff}
+  .err{color:#ff6b6b;font-size:12px;margin-top:8px}
+  button{margin-top:16px;width:100%;padding:10px;background:#6c63ff;border:none;
+    border-radius:8px;color:#fff;font-size:14px;font-weight:600;cursor:pointer}
+  button:hover{background:#7c73ff}
+</style></head>
+<body><div class="card">
+  <h2>FileSplitter</h2>
+  <div class="sub">External access — authentication required</div>
+  <form method="post">
+    <label for="pw">Password</label>
+    <input id="pw" type="password" name="password" autofocus autocomplete="current-password">
+    {% if error %}<div class="err">{{ error }}</div>{% endif %}
+    <button type="submit">Sign in</button>
+  </form>
+</div></body></html>"""
+
+
+def _requires_auth() -> bool:
+    if not config.DASHBOARD_PASSWORD:
+        return False
+    # Cloudflare Tunnel sets CF-Connecting-IP; its presence means the request
+    # arrived via the tunnel (external), not directly from the LAN.
+    return bool(request.headers.get("CF-Connecting-IP"))
+
+
+@app.before_request
+def check_auth():
+    if not _requires_auth():
+        return
+    if request.endpoint in ("login", "login_post", "logout"):
+        return
+    if session.get("authenticated"):
+        return
+    return redirect("/login")
+
+
+@app.get("/login")
+def login():
+    return render_template_string(_LOGIN_TEMPLATE, error=None)
+
+
+@app.post("/login")
+def login_post():
+    if request.form.get("password") == config.DASHBOARD_PASSWORD:
+        session["authenticated"] = True
+        return redirect("/")
+    return render_template_string(_LOGIN_TEMPLATE, error="Incorrect password"), 401
+
+
+@app.get("/logout")
+def logout():
+    session.clear()
+    return redirect("/login")
+
 
 _scan_lock = threading.Lock()
 _scan_status = {"running": False, "last_result": None}
@@ -71,6 +143,7 @@ def index():
         media_paths=config.MEDIA_PATHS,
         flask_port=config.FLASK_PORT,
         version=_VERSION,
+        show_logout=bool(config.DASHBOARD_PASSWORD),
     )
 
 
@@ -190,12 +263,14 @@ def api_clear_jobs():
 @app.post("/api/queue/pause")
 def api_pause():
     worker.pause()
+    db.set_setting('queue_paused', '1')
     return jsonify({"ok": True, "paused": True})
 
 
 @app.post("/api/queue/resume")
 def api_resume():
     worker.resume()
+    db.set_setting('queue_paused', '0')
     return jsonify({"ok": True, "paused": False})
 
 
@@ -262,6 +337,7 @@ def api_post_settings():
 
 if __name__ == "__main__":
     db.init_db()
+    app.secret_key = config.FLASK_SECRET_KEY or db.get_setting("secret_key")
     worker.start()
     logger.info("FileSplitter running on port %d", config.FLASK_PORT)
     app.run(host="0.0.0.0", port=config.FLASK_PORT, threaded=True)

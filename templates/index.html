@@ -238,6 +238,7 @@
   </div>
   <div class="spacer"></div>
   <span id="queue-indicator" class="indicator indicator-green" title="Queue running"></span>
+  {% if show_logout %}<a href="/logout" class="btn" style="margin-right:4px">Logout</a>{% endif %}
   <button class="btn" id="btn-pause">Pause Queue</button>
   <button class="btn btn-primary" id="btn-scan">Scan Now</button>
 </header>
@@ -539,7 +540,7 @@ function updateJobs(jobs) {
       <div class="job-header">
         <span class="badge badge-${j.status}">${j.type}</span>
         <span class="job-filename" title="${escHtml(j.file)}">${escHtml(j.file)}</span>
-        ${j.started_at ? `<span style="font-size:11px;color:var(--muted)" title="Running time">${fmtElapsed(j.started_at)}</span>` : ''}
+        ${j.status === 'running' && j.started_at ? `<span style="font-size:11px;color:var(--muted)" title="Running time">${fmtElapsed(j.started_at)}</span>` : ''}
         <span style="font-size:12px;color:var(--muted)">${j.progress}%</span>
         <button class="btn btn-sm btn-danger" onclick="cancelJob(${j.id})">Cancel</button>
       </div>
