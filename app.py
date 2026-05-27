@@ -219,6 +219,9 @@ def api_get_settings():
         "nvenc_available": _enc.NVENC_AVAILABLE,
         "cpu_presets": _enc._CPU_PRESETS,
         "nvenc_presets": _enc._NVENC_PRESETS,
+        "scene_method": config.SCENE_METHOD,
+        "black_min_duration": config.BLACK_MIN_DURATION,
+        "black_pix_th": config.BLACK_PIX_TH,
     })
 
 
@@ -229,7 +232,7 @@ def api_post_settings():
     updatable = [
         "scene_threshold", "min_scene_duration", "split_min_duration",
         "split_min_size", "x265_crf", "x265_preset", "target_resolution",
-        "encoder_backend",
+        "encoder_backend", "scene_method", "black_min_duration", "black_pix_th",
     ]
     for key in updatable:
         if key in body:

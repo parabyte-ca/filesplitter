@@ -381,8 +381,24 @@
           <select id="s-preset" class="filter-select" style="width:100%"></select>
         </div>
         <div class="form-group">
+          <label>Scene Detection Method</label>
+          <select id="s-scene-method" class="filter-select" style="width:100%">
+            <option value="auto">Auto — frame diff, fall back to black transitions</option>
+            <option value="select">Frame diff only (select filter)</option>
+            <option value="black">Black transitions only (blackdetect)</option>
+          </select>
+        </div>
+        <div class="form-group">
           <label>Scene Detection Threshold (0.0–1.0)</label>
           <input type="number" id="s-scene-threshold" step="0.05" min="0" max="1" />
+        </div>
+        <div class="form-group" id="s-black-dur-group">
+          <label>Black Transition Min Duration (seconds)</label>
+          <input type="number" id="s-black-min-dur" step="0.1" min="0.1" />
+        </div>
+        <div class="form-group" id="s-black-pix-group">
+          <label>Black Pixel Threshold (0.0–1.0, lower = stricter black)</label>
+          <input type="number" id="s-black-pix-th" step="0.01" min="0" max="1" />
         </div>
         <div class="form-group">
           <label>Min Scene Duration (seconds)</label>
@@ -777,14 +793,25 @@ async function loadSettings() {
   document.getElementById('s-crf').value = s.x265_crf;
   // Set preset after presets are populated by _updateEncoderUI
   document.getElementById('s-preset').value = s.x265_preset || 'medium';
+  document.getElementById('s-scene-method').value = s.scene_method || 'auto';
   document.getElementById('s-scene-threshold').value = s.scene_threshold;
+  document.getElementById('s-black-min-dur').value = s.black_min_duration ?? 0.5;
+  document.getElementById('s-black-pix-th').value = s.black_pix_th ?? 0.10;
   document.getElementById('s-min-scene').value = s.min_scene_duration;
   document.getElementById('s-split-dur').value = s.split_min_duration;
   document.getElementById('s-split-size').value = s.split_min_size;
+  _updateSceneMethodUI(s.scene_method || 'auto');
 
   renderPaths(s.media_paths || []);
 }
 
+function _updateSceneMethodUI(method) {
+  const showBlack = method !== 'select';
+  document.getElementById('s-black-dur-group').style.display = showBlack ? '' : 'none';
+  document.getElementById('s-black-pix-group').style.display = showBlack ? '' : 'none';
+}
+
+document.getElementById('s-scene-method').onchange = (e) => _updateSceneMethodUI(e.target.value);
 document.getElementById('s-backend').onchange = (e) => _updateEncoderUI(e.target.value);
 
 function renderPaths(paths) {
@@ -812,7 +839,10 @@ document.getElementById('btn-save-settings').onclick = async () => {
     target_resolution: document.getElementById('s-resolution').value,
     x265_crf: parseInt(document.getElementById('s-crf').value),
     x265_preset: document.getElementById('s-preset').value,
+    scene_method: document.getElementById('s-scene-method').value,
     scene_threshold: parseFloat(document.getElementById('s-scene-threshold').value),
+    black_min_duration: parseFloat(document.getElementById('s-black-min-dur').value),
+    black_pix_th: parseFloat(document.getElementById('s-black-pix-th').value),
     min_scene_duration: parseInt(document.getElementById('s-min-scene').value),
     split_min_duration: parseInt(document.getElementById('s-split-dur').value),
     split_min_size: parseInt(document.getElementById('s-split-size').value),
