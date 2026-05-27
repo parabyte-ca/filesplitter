@@ -119,6 +119,8 @@ def _run_job(job: dict) -> None:
                 db.set_file_status(file_id, "done")
                 db.set_job_status(job_id, "done")
                 db.update_job_progress(job_id, 100.0, done_msg, saved_bytes=saved)
+                if saved > 0:
+                    db.increment_saved_bytes(saved)
             else:
                 err = last_log[0][:300] if last_log[0] else "Encoding failed"
                 db.set_file_status(file_id, "error", err)
