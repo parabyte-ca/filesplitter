@@ -108,6 +108,15 @@ def encode_to_x265(
             text=True,
         )
 
+        # Drain stderr in a background thread to prevent the 64 KB pipe buffer
+        # from filling up and deadlocking ffmpeg when stdout stops producing output.
+        stderr_buf: list[str] = []
+        stderr_thread = threading.Thread(
+            target=lambda: stderr_buf.extend(proc.stderr),
+            daemon=True,
+        )
+        stderr_thread.start()
+
         duration_us = int(probe.duration_sec * 1_000_000)
         log_lines: list[str] = []
         current_pct = 0.0
@@ -126,6 +135,7 @@ def encode_to_x265(
                 except subprocess.TimeoutExpired:
                     proc.kill()
                     proc.wait()
+                stderr_thread.join(timeout=2)
                 _cleanup(tmp_path)
                 return False
 
@@ -139,9 +149,10 @@ def encode_to_x265(
                     pass
 
         proc.wait()
+        stderr_thread.join(timeout=2)
 
         if proc.returncode != 0:
-            stderr = proc.stderr.read()
+            stderr = "".join(stderr_buf)
             err_msg = stderr.strip()[-300:] if stderr.strip() else "ffmpeg encode failed (no stderr)"
             logger.error("ffmpeg encode failed: %s", err_msg)
             if progress_cb:
