@@ -24,6 +24,11 @@ MEDIA_PATHS: list[str] = _parse_paths(os.environ.get("MEDIA_PATHS", "/media"))
 SCENE_THRESHOLD: float = float(os.environ.get("SCENE_THRESHOLD", "0.4"))
 MIN_SCENE_DURATION: int = int(os.environ.get("MIN_SCENE_DURATION", "120"))
 
+# Scene detection method: "auto" (select then blackdetect fallback), "select", or "black"
+SCENE_METHOD: str = os.environ.get("SCENE_METHOD", "auto")
+BLACK_MIN_DURATION: float = float(os.environ.get("BLACK_MIN_DURATION", "0.5"))
+BLACK_PIX_TH: float = float(os.environ.get("BLACK_PIX_TH", "0.10"))
+
 SPLIT_MIN_DURATION: int = int(os.environ.get("SPLIT_MIN_DURATION", "5400"))   # 90 min
 SPLIT_MIN_SIZE: int = int(os.environ.get("SPLIT_MIN_SIZE", str(2 * 1024 ** 3)))  # 2 GB
 SPLIT_KEYWORDS: list[str] = _parse_paths(

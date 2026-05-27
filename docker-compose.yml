@@ -23,10 +23,16 @@ services:
       # Port (4250 preferred; auto-increments if occupied)
       FLASK_PORT: "4250"
 
+      # Scene detection method: auto (try frame-diff, fall back to black transitions),
+      #   select (frame-diff only), or black (fade-to-black detection only)
+      SCENE_METHOD: "auto"
       # Scene detection sensitivity (0.0=everything, 1.0=nothing; 0.4 is a good default)
       SCENE_THRESHOLD: "0.4"
       # Minimum gap between split points in seconds (prevents micro-clips)
       MIN_SCENE_DURATION: "120"
+      # Black-transition detection: minimum black duration (seconds) and pixel darkness threshold
+      BLACK_MIN_DURATION: "0.5"
+      BLACK_PIX_TH: "0.10"
 
       # Anthology detection thresholds (any one criterion triggers split eligibility)
       SPLIT_MIN_DURATION: "3600"          # 60 minutes

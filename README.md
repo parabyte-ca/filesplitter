@@ -1,6 +1,6 @@
 # FileSplitter
 
-**Version 0.9.2**
+**Version 0.9.3**
 
 A self-hosted Docker service for TrueNAS (or any Linux host) that automatically indexes your media library, re-encodes video files to x265, and splits multi-scene anthology files at scene boundaries.
 
@@ -129,6 +129,7 @@ The SQLite database is stored at `./data/filesplitter.db` on the host (mounted i
 
 | Version | Date | Notes |
 |---|---|---|
+| **0.9.3** | 2026-05-26 | Black-frame scene detection: add `blackdetect` filter support for fade-to-black anthology transitions; `SCENE_METHOD=auto` (default) tries frame-diff first then falls back to blackdetect; `select` and `black` modes also available; configurable via Settings tab and env vars |
 | **0.9.2** | 2026-05-26 | Fix: codec not updated after encode — files stayed as h264 in the DB after x265 encoding, causing Encode button to reappear and incorrect codec display; `update_file_size` now writes `codec=hevc` on success; startup migration fixes existing affected records |
 | **0.9.1** | 2026-05-26 | Backfill `saved_bytes` from existing `log_tail` strings on startup — historical encode savings are recovered automatically from the `"N GB → M GB"` text stored in prior job records |
 | **0.9.0** | 2026-05-26 | Cumulative space-saved stat card (green, live via SSE): `saved_bytes` stored per encode job, summed in `get_stats()`; DB migration adds column to existing installs |
