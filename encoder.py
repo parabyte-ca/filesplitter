@@ -43,7 +43,7 @@ def _build_codec_args(backend: str, crf: int, preset: str) -> list[str]:
             logger.warning("hevc_nvenc not available — falling back to libx265")
             return ["-c:v", "libx265", "-crf", str(crf), "-preset", "medium"]
         nvenc_preset = preset if preset in _NVENC_PRESETS else "medium"
-        return ["-c:v", "hevc_nvenc", "-rc", "vbr", "-cq", str(crf), "-preset", nvenc_preset]
+        return ["-c:v", "hevc_nvenc", "-cq", str(crf), "-b:v", "0", "-preset", nvenc_preset]
     cpu_preset = preset if preset in _CPU_PRESETS else "medium"
     return ["-c:v", "libx265", "-crf", str(crf), "-preset", cpu_preset]
 

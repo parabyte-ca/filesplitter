@@ -1,6 +1,6 @@
 # FileSplitter
 
-**Version 0.9.7**
+**Version 0.9.8**
 
 A self-hosted Docker service for TrueNAS (or any Linux host) that automatically indexes your media library, re-encodes video files to x265, and splits multi-scene anthology files at scene boundaries.
 
@@ -129,6 +129,7 @@ The SQLite database is stored at `./data/filesplitter.db` on the host (mounted i
 
 | Version | Date | Notes |
 |---|---|---|
+| **0.9.8** | 2026-05-27 | Fix NVENC `-22 Invalid argument` error: replace `-rc vbr -cq` with `-cq -b:v 0` which is compatible across all NVENC driver/GPU versions |
 | **0.9.7** | 2026-05-27 | Fix job cancellation: cancel_event is now registered in `_queue_loop` before `_executor.submit()` so queued-but-not-yet-running jobs can be cancelled immediately; encoder adds a stderr drain thread to prevent the 64 KB pipe buffer from deadlocking ffmpeg and stalling the cancel check |
 | **0.9.6** | 2026-05-27 | Anthology classifier now skips files whose name contains an `SxxExx` episode pattern — large BluRay remuxes of TV episodes are no longer misclassified as anthologies |
 | **0.9.5** | 2026-05-27 | Cloudflare Tunnel auth: `DASHBOARD_PASSWORD` env var gates access from CF Tunnel while LAN access remains open; session-based login with dark-themed form; Logout button in header; persistent pause state (survives container restarts via `settings` table); elapsed timer only shown for actively running jobs |
