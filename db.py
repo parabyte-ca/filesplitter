@@ -126,6 +126,16 @@ def init_db() -> None:
         (_now(),),
     )
     conn.execute("UPDATE files SET status='pending' WHERE status='processing'")
+    # Reset files stuck as 'queued' with no active job (orphaned by a crash or
+    # incomplete restart) so they can be re-queued by the user.
+    conn.execute("""
+        UPDATE files SET status='pending'
+        WHERE status='queued'
+        AND id NOT IN (
+            SELECT DISTINCT file_id FROM jobs
+            WHERE status IN ('queued','running')
+        )
+    """)
     conn.commit()
     conn.close()
 
