@@ -148,6 +148,14 @@ def _detect_black(
     return merged
 
 
+def _filter_boundary_cuts(cuts: list[float], duration_sec: float, min_gap: float) -> list[float]:
+    """Remove cuts that are too close to the start or end of the file.
+    Prevents tiny degenerate first/last segments that fail stream-copy verification."""
+    if not duration_sec:
+        return cuts
+    return [t for t in cuts if t >= min_gap and t <= duration_sec - min_gap]
+
+
 def detect_scenes(
     video_path: str,
     threshold: float = None,
@@ -158,6 +166,7 @@ def detect_scenes(
     """
     Return a sorted list of scene-change timestamps (seconds) for the given file.
     Nearby timestamps closer than MIN_SCENE_DURATION are merged.
+    Cuts within MIN_SCENE_DURATION of the file boundaries are discarded.
     Returns [] if cancelled or on error.
 
     Dispatches based on config.SCENE_METHOD:
@@ -169,11 +178,13 @@ def detect_scenes(
         threshold = config.SCENE_THRESHOLD
 
     method = config.SCENE_METHOD
+    min_gap = config.MIN_SCENE_DURATION
 
     if method == "black":
         result = _detect_black(video_path, cancel_event, duration_sec, progress_cb,
                                start_pct=2.0, end_pct=33.0)
-        return result if result is not None else []
+        cuts = result if result is not None else []
+        return _filter_boundary_cuts(cuts, duration_sec, min_gap)
 
     # "select" or "auto"
     select_end = 33.0 if method == "select" else 18.0
@@ -190,9 +201,9 @@ def detect_scenes(
             progress_cb(18.0, "No cuts found — trying black transition detection…")
         result = _detect_black(video_path, cancel_event, duration_sec, progress_cb,
                                start_pct=18.0, end_pct=33.0)
-        return result if result is not None else []
+        cuts = result if result is not None else []
 
-    return cuts
+    return _filter_boundary_cuts(cuts, duration_sec, min_gap)
 
 
 def _parse_timestamps(path: str) -> list[float]:
