@@ -66,12 +66,16 @@ def _queue_loop() -> None:
         _paused.wait()
         job = db.dequeue_next_job()
         if job:
-            _executor.submit(_run_job, dict(job))
+            job_dict = dict(job)
+            job_id = job_dict["id"]
+            cancel_event = threading.Event()
+            _cancel_events[job_id] = cancel_event  # register BEFORE submit
+            _executor.submit(_run_job, job_dict, cancel_event)
         else:
             time.sleep(3)
 
 
-def _run_job(job: dict) -> None:
+def _run_job(job: dict, cancel_event: threading.Event) -> None:
     job_id = job["id"]
     file_id = job["file_id"]
     job_type = job["job_type"]
@@ -81,14 +85,20 @@ def _run_job(job: dict) -> None:
     if file_row is None:
         logger.error("Job %d: file %d not found", job_id, file_id)
         db.set_job_status(job_id, "error")
+        _cancel_events.pop(job_id, None)
+        return
+
+    # If cancel was signalled before this thread was free, bail out immediately.
+    if cancel_event.is_set():
+        db.set_file_status(file_id, "pending")
+        db.set_job_status(job_id, "cancelled")
+        db.update_job_progress(job_id, 0, "Cancelled before start")
+        _cancel_events.pop(job_id, None)
         return
 
     input_path = file_row["path"]
     db.set_file_status(file_id, "processing")
     db.set_job_status(job_id, "running")
-
-    cancel_event = threading.Event()
-    _cancel_events[job_id] = cancel_event
 
     # Track the last progress log so we can use it as the error message on failure.
     last_log = [""]
