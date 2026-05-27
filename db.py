@@ -100,9 +100,9 @@ def init_db() -> None:
     existing = conn.execute("SELECT value FROM settings WHERE key='total_saved_bytes'").fetchone()
     if existing is None:
         total = conn.execute(
-            "SELECT COALESCE(SUM(saved_bytes), 0) as s FROM jobs"
+            "SELECT COALESCE(SUM(saved_bytes), 0) FROM jobs"
             " WHERE status='done' AND job_type='encode'"
-        ).fetchone()["s"]
+        ).fetchone()[0]
         conn.execute(
             "INSERT INTO settings (key, value) VALUES ('total_saved_bytes', ?)",
             (str(int(total)),)
