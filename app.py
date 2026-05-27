@@ -225,6 +225,14 @@ def api_get_settings():
     })
 
 
+@app.post("/api/settings/saved-bytes")
+def api_set_saved_bytes():
+    body = request.get_json(force=True) or {}
+    value = int(body.get("value", 0))
+    db.set_saved_bytes(value)
+    return jsonify({"ok": True, "total_saved_bytes": value})
+
+
 @app.post("/api/settings")
 def api_post_settings():
     """Persist runtime-adjustable settings to DB (config module re-reads on access for new jobs)."""

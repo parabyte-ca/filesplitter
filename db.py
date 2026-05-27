@@ -88,6 +88,18 @@ def init_db() -> None:
             if saved > 0:
                 conn.execute("UPDATE jobs SET saved_bytes=? WHERE id=?", (saved, row[0]))
     conn.commit()
+    # Seed persistent total_saved_bytes in settings if not yet stored
+    existing = conn.execute("SELECT value FROM settings WHERE key='total_saved_bytes'").fetchone()
+    if existing is None:
+        total = conn.execute(
+            "SELECT COALESCE(SUM(saved_bytes), 0) as s FROM jobs"
+            " WHERE status='done' AND job_type='encode'"
+        ).fetchone()["s"]
+        conn.execute(
+            "INSERT INTO settings (key, value) VALUES ('total_saved_bytes', ?)",
+            (str(int(total)),)
+        )
+        conn.commit()
     # Fix files whose codec wasn't updated at encode time (pre-v0.9.2):
     # any file with a done encode job should be recorded as hevc
     conn.execute("""
@@ -205,12 +217,11 @@ def get_stats() -> dict:
                 SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) as pending
             FROM files
         """).fetchone()
-        saved = conn.execute(
-            "SELECT COALESCE(SUM(saved_bytes), 0) as total_saved_bytes"
-            " FROM jobs WHERE status='done' AND job_type='encode'"
+        saved_row = conn.execute(
+            "SELECT value FROM settings WHERE key='total_saved_bytes'"
         ).fetchone()
         result = dict(row) if row else {}
-        result["total_saved_bytes"] = saved["total_saved_bytes"] if saved else 0
+        result["total_saved_bytes"] = int(saved_row["value"]) if saved_row else 0
         return result
 
 
@@ -343,4 +354,23 @@ def set_setting(key: str, value: str) -> None:
             "INSERT INTO settings (key, value) VALUES (?, ?) "
             "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
             (key, value),
+        )
+
+
+def increment_saved_bytes(amount: int) -> None:
+    with connect() as conn:
+        conn.execute(
+            "INSERT INTO settings (key, value) VALUES ('total_saved_bytes', ?) "
+            "ON CONFLICT(key) DO UPDATE SET value="
+            "  CAST(CAST(value AS INTEGER) + ? AS TEXT)",
+            (str(amount), amount)
+        )
+
+
+def set_saved_bytes(value: int) -> None:
+    with connect() as conn:
+        conn.execute(
+            "INSERT INTO settings (key, value) VALUES ('total_saved_bytes', ?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            (str(value),)
         )
