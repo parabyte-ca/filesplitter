@@ -53,6 +53,10 @@ services:
       # Free registration: https://theporndb.net/register
       TPDB_API_KEY: ""
 
+      # Dashboard password — required when accessing via Cloudflare Tunnel (external).
+      # Direct LAN access is always unrestricted regardless of this setting.
+      # DASHBOARD_PASSWORD: ""
+
       # --- NVIDIA GPU (NVENC) encoding ---
       # Uncomment ENCODER_BACKEND below and the deploy block to enable GPU encoding.
       # Requires: NVIDIA drivers installed on the TrueNAS host + nvidia-container-toolkit.

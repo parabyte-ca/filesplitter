@@ -88,6 +88,14 @@ def init_db() -> None:
             if saved > 0:
                 conn.execute("UPDATE jobs SET saved_bytes=? WHERE id=?", (saved, row[0]))
     conn.commit()
+    # Seed a stable session secret key if not yet stored
+    if not conn.execute("SELECT value FROM settings WHERE key='secret_key'").fetchone():
+        import secrets as _secrets
+        conn.execute(
+            "INSERT INTO settings (key, value) VALUES ('secret_key', ?)",
+            (_secrets.token_hex(32),)
+        )
+        conn.commit()
     # Seed persistent total_saved_bytes in settings if not yet stored
     existing = conn.execute("SELECT value FROM settings WHERE key='total_saved_bytes'").fetchone()
     if existing is None:

@@ -66,6 +66,14 @@ DATABASE_PATH: str = os.environ.get("DATABASE_PATH", "/app/data/filesplitter.db"
 # ThePornDB API key for content-based scene naming (free registration at theporndb.net/register)
 TPDB_API_KEY: str = os.environ.get("TPDB_API_KEY", "")
 
+# Set to require a password when accessed through Cloudflare Tunnel (external access).
+# Direct LAN access is always unrestricted.
+DASHBOARD_PASSWORD: str = os.environ.get("DASHBOARD_PASSWORD", "")
+
+# Override the auto-generated session secret key (stored in DB). Only needed if you
+# want sessions to survive a full database reset.
+FLASK_SECRET_KEY: str = os.environ.get("FLASK_SECRET_KEY", "")
+
 _preferred_port = int(os.environ.get("FLASK_PORT", "4250"))
 FLASK_PORT: int = _find_free_port(_preferred_port)
 if FLASK_PORT != _preferred_port:

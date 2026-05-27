@@ -28,6 +28,9 @@ _cancel_events: dict[int, threading.Event] = {}
 def start(num_workers: int = None) -> None:
     global _executor
     _executor = ThreadPoolExecutor(max_workers=num_workers or config.MAX_WORKERS)
+    if db.get_setting('queue_paused', '0') == '1':
+        _paused.clear()
+        logger.info("Queue starting in paused state (persisted)")
     t = threading.Thread(target=_queue_loop, daemon=True)
     t.start()
     logger.info("Worker started with %d thread(s)", num_workers or config.MAX_WORKERS)
