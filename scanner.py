@@ -1,4 +1,5 @@
 import os
+import re
 import logging
 
 import config
@@ -7,8 +8,12 @@ import codec_detector
 
 logger = logging.getLogger(__name__)
 
+_EPISODE_RE = re.compile(r's\d+e\d+', re.IGNORECASE)
+
 
 def _is_anthology(filename: str, size_bytes: int, duration_sec: float) -> bool:
+    if _EPISODE_RE.search(filename):
+        return False  # TV episode naming (S01E02) — never an anthology
     long_enough = bool(duration_sec and duration_sec >= config.SPLIT_MIN_DURATION)
     big_enough  = bool(size_bytes  and size_bytes  >= config.SPLIT_MIN_SIZE)
     return long_enough or big_enough
