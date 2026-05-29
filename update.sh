@@ -22,7 +22,11 @@ echo "Current version : $PREV_VERSION"
 echo ""
 
 echo "[1/4] Pulling latest code..."
+# Stash any local edits (e.g. docker-compose.yml volume/env customisations) so
+# git pull can succeed, then restore them afterwards.
+git stash --include-untracked --quiet || true
 git pull
+git stash pop --quiet || true  # restore local edits (merge conflicts are left for the user)
 
 NEW_VERSION="$(cat VERSION 2>/dev/null || echo 'unknown')"
 

@@ -11,7 +11,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-RUN mkdir -p /app/data
+RUN mkdir -p /app/data && \
+    useradd -u 1000 -m filesplitter && \
+    chown -R filesplitter:filesplitter /app
+
+USER filesplitter
 
 ARG VERSION=unknown
 LABEL org.opencontainers.image.title="FileSplitter" \
@@ -20,7 +24,7 @@ LABEL org.opencontainers.image.title="FileSplitter" \
 
 EXPOSE 4250
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:4250/api/version')" || exit 1
 
 CMD ["python", "app.py"]

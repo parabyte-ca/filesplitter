@@ -62,8 +62,8 @@ def init_db() -> None:
         CREATE INDEX IF NOT EXISTS idx_jobs_file_id ON jobs(file_id);
         CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
     """)
-    # Add columns introduced after the initial schema — try/except handles
-    # both old SQLite (no IF NOT EXISTS on ALTER TABLE) and existing DBs
+    # Add columns introduced after the initial schema.
+    # Catch only "duplicate column" errors; re-raise anything else (locked DB, disk full).
     for _ddl in [
         "ALTER TABLE files ADD COLUMN width INTEGER DEFAULT 0",
         "ALTER TABLE files ADD COLUMN height INTEGER DEFAULT 0",
@@ -71,8 +71,9 @@ def init_db() -> None:
     ]:
         try:
             conn.execute(_ddl)
-        except sqlite3.OperationalError:
-            pass  # column already exists
+        except sqlite3.OperationalError as _e:
+            if "duplicate column" not in str(_e).lower():
+                raise
     conn.commit()
     # Backfill saved_bytes from log_tail for encode jobs that pre-date v0.9.0
     rows = conn.execute(

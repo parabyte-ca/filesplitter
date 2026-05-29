@@ -35,8 +35,8 @@ services:
       BLACK_PIX_TH: "0.10"
 
       # Anthology detection thresholds (any one criterion triggers split eligibility)
-      SPLIT_MIN_DURATION: "3600"          # 60 minutes
-      SPLIT_MIN_SIZE: "4294967296"        # 4 GB
+      SPLIT_MIN_DURATION: "5400"          # 90 minutes (files shorter than this are not anthologies)
+      SPLIT_MIN_SIZE: "2147483648"        # 2 GB
       SPLIT_KEYWORDS: "Vol,Compilation,Anthology,Collection,Kink"
 
       # x265 encoding defaults (overridable per-job from the UI)
@@ -53,8 +53,8 @@ services:
       # Free registration: https://theporndb.net/register
       TPDB_API_KEY: ""
 
-      # Dashboard password — required when accessing via Cloudflare Tunnel (external).
-      # Direct LAN access is always unrestricted regardless of this setting.
+      # Dashboard password — required when accessing from non-LAN IPs (e.g. Cloudflare Tunnel).
+      # Direct LAN access (192.168.x.x, 10.x.x.x, 172.16-31.x.x) is always unrestricted.
       # DASHBOARD_PASSWORD: ""
 
       # --- NVIDIA GPU (NVENC) encoding ---
@@ -63,14 +63,25 @@ services:
       # GPU encoding is 5-10x faster than CPU. Use CQ 22-24 for quality equivalent to CRF 28.
       # ENCODER_BACKEND: nvenc
 
-    # --- Uncomment this block to pass the GPU through to the container ---
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu, video]
+    # Limit how much CPU and RAM ffmpeg jobs can consume on the host.
+    # Adjust to match your NAS — this protects other services from being starved.
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: "4G"
+        # --- Uncomment the reservations block below to enable GPU (NVENC) encoding ---
+        # reservations:
+        #   devices:
+        #     - driver: nvidia
+        #       count: 1
+        #       capabilities: [gpu, video]
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
 
     restart: unless-stopped
     healthcheck:

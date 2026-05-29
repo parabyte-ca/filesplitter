@@ -63,6 +63,8 @@ VIDEO_EXTENSIONS: set[str] = set(
 
 DATABASE_PATH: str = os.environ.get("DATABASE_PATH", "/app/data/filesplitter.db")
 
+FFPROBE_TIMEOUT: int = int(os.environ.get("FFPROBE_TIMEOUT", "60"))
+
 # ThePornDB API key for content-based scene naming (free registration at theporndb.net/register)
 TPDB_API_KEY: str = os.environ.get("TPDB_API_KEY", "")
 

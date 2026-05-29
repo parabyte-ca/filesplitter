@@ -2,6 +2,8 @@ import json
 import subprocess
 import os
 
+import config
+
 
 class ProbeResult:
     def __init__(self, codec: str, duration_sec: float, size_bytes: int,
@@ -28,7 +30,7 @@ def probe(path: str) -> ProbeResult | None:
                 "-show_format",
                 path,
             ],
-            capture_output=True, text=True, timeout=60,
+            capture_output=True, text=True, timeout=config.FFPROBE_TIMEOUT,
         )
         if result.returncode != 0:
             return None
@@ -46,7 +48,10 @@ def probe(path: str) -> ProbeResult | None:
         height = int(video_stream.get("height", 0))
 
         fmt = data.get("format", {})
-        duration_sec = float(fmt.get("duration", 0))
+        # Fall back to the video stream's duration for containers (.ts, .flv, some
+        # .mkv) that omit duration at the format level.
+        dur_str = fmt.get("duration") or video_stream.get("duration", "0")
+        duration_sec = float(dur_str)
         size_bytes = int(fmt.get("size", os.path.getsize(path)))
 
         return ProbeResult(codec, duration_sec, size_bytes, width, height)
@@ -55,8 +60,8 @@ def probe(path: str) -> ProbeResult | None:
         return None
 
 
-def verify_file(path: str, expected_codec: str = None,
-                ref_duration: float = None, tolerance: float = 0.05) -> bool:
+def verify_file(path: str, expected_codec: str | None = None,
+                ref_duration: float | None = None, tolerance: float = 0.05) -> bool:
     """Return True if file is playable and optionally matches codec/duration."""
     result = probe(path)
     if result is None:
