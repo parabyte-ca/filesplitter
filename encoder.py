@@ -51,8 +51,8 @@ def _build_codec_args(backend: str, crf: int, preset: str) -> list[str]:
 def encode_to_x265(
     input_path: str,
     target_resolution: str = "original",
-    crf: int = None,
-    preset: str = None,
+    crf: int | None = None,
+    preset: str | None = None,
     progress_cb: Callable[[float, str], None] | None = None,
     cancel_event: threading.Event | None = None,
 ) -> bool:
@@ -100,6 +100,7 @@ def encode_to_x265(
         input_path, effective_backend, target_resolution, crf,
     )
 
+    proc: subprocess.Popen | None = None
     try:
         proc = subprocess.Popen(
             cmd,
@@ -117,6 +118,15 @@ def encode_to_x265(
         )
         stderr_thread.start()
 
+        # Cancel-watcher: terminates proc as soon as cancel_event fires, even if
+        # ffmpeg hasn't produced any stdout yet (e.g. during initial header scan).
+        if cancel_event:
+            def _watch_cancel() -> None:
+                cancel_event.wait()
+                if proc.poll() is None:
+                    proc.terminate()
+            threading.Thread(target=_watch_cancel, daemon=True).start()
+
         duration_us = int(probe.duration_sec * 1_000_000)
         log_lines: list[str] = []
         current_pct = 0.0
@@ -129,7 +139,6 @@ def encode_to_x265(
 
             if cancel_event and cancel_event.is_set():
                 logger.info("Encode cancelled for %s", input_path)
-                proc.terminate()
                 try:
                     proc.wait(timeout=5)
                 except subprocess.TimeoutExpired:
@@ -179,6 +188,14 @@ def encode_to_x265(
             progress_cb(0, f"ERROR: {exc}")
         _cleanup(tmp_path)
         return False
+    finally:
+        if proc is not None and proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
 
 
 def _cleanup(path: str) -> None:

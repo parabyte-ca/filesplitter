@@ -1,6 +1,6 @@
 # FileSplitter
 
-**Version 0.9.8**
+**Version 0.9.9**
 
 A self-hosted Docker service for TrueNAS (or any Linux host) that automatically indexes your media library, re-encodes video files to x265, and splits multi-scene anthology files at scene boundaries.
 
@@ -85,8 +85,8 @@ All settings are environment variables in `docker-compose.yml`. The dashboard Se
 | `FLASK_PORT` | `4250` | Dashboard port |
 | `SCENE_THRESHOLD` | `0.4` | Scene detection sensitivity (0=everything, 1=nothing) |
 | `MIN_SCENE_DURATION` | `120` | Minimum seconds between split points |
-| `SPLIT_MIN_DURATION` | `3600` | Flag as anthology if duration ≥ this (seconds) |
-| `SPLIT_MIN_SIZE` | `4294967296` | Flag as anthology if size ≥ this (bytes, default 4 GB) |
+| `SPLIT_MIN_DURATION` | `5400` | Flag as anthology if duration ≥ this (seconds, default 90 min) |
+| `SPLIT_MIN_SIZE` | `2147483648` | Flag as anthology if size ≥ this (bytes, default 2 GB) |
 | `SPLIT_KEYWORDS` | `Vol,Compilation,…` | Filename keywords that trigger anthology classification |
 | `ENCODER_BACKEND` | `cpu` | `cpu` (libx265) or `nvenc` (GPU HEVC — see GPU section above) |
 | `X265_CRF` | `28` | x265 CRF / NVENC CQ quality (18=high, 28=good, 35=small) |
@@ -129,6 +129,7 @@ The SQLite database is stored at `./data/filesplitter.db` on the host (mounted i
 
 | Version | Date | Notes |
 |---|---|---|
+| **0.9.9** | 2026-05-29 | Comprehensive hardening: queue loop now survives DB exceptions; `duration_sec==0` guard prevents corrupt split boundaries and original deletion; encoder cancel fires immediately (watcher thread) not just while ffmpeg produces stdout; proc always reaped on exception; UI settings persist across container restarts; auth now uses RFC-1918 LAN IP check instead of spoofable CF header; login uses `hmac.compare_digest` + 1s delay; session cookie gets `SameSite=Lax`; `get_json` null guard; SSE `onerror` indicator and keepalive comments; `.dockerignore` added; resource limits + log rotation in compose; `update.sh` stashes local edits before `git pull`; non-root user in Dockerfile; ffprobe timeout configurable; README defaults corrected; GitHub Actions CI added |
 | **0.9.8** | 2026-05-27 | Fix NVENC `-22 Invalid argument` error: replace `-rc vbr -cq` with `-cq -b:v 0` which is compatible across all NVENC driver/GPU versions |
 | **0.9.7** | 2026-05-27 | Fix job cancellation: cancel_event is now registered in `_queue_loop` before `_executor.submit()` so queued-but-not-yet-running jobs can be cancelled immediately; encoder adds a stderr drain thread to prevent the 64 KB pipe buffer from deadlocking ffmpeg and stalling the cancel check |
 | **0.9.6** | 2026-05-27 | Anthology classifier now skips files whose name contains an `SxxExx` episode pattern — large BluRay remuxes of TV episodes are no longer misclassified as anthologies |

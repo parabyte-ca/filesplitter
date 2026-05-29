@@ -196,6 +196,7 @@
   .indicator { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
   .indicator-green { background: var(--green); }
   .indicator-yellow { background: var(--yellow); animation: pulse 1.5s infinite; }
+  .indicator-red { background: var(--red); animation: pulse 1.5s infinite; }
   @keyframes pulse { 0%,100%{opacity:1}50%{opacity:0.4} }
 
   .badge-cancelled { background: rgba(100,116,139,0.15); color: var(--muted); }
@@ -480,7 +481,8 @@ let sortDir = 1; // 1=asc, -1=desc
 // ---- SSE ----
 const es = new EventSource('/stream');
 es.onmessage = (e) => {
-  const data = JSON.parse(e.data);
+  let data;
+  try { data = JSON.parse(e.data); } catch { return; }
   updateStats(data.stats);
   updateJobs(data.active_jobs);
   isPaused = data.paused;
@@ -493,6 +495,10 @@ es.onmessage = (e) => {
     document.getElementById('btn-scan').textContent = 'Scan Now';
     document.getElementById('btn-scan').disabled = false;
   }
+};
+es.onerror = () => {
+  document.getElementById('queue-indicator').className = 'indicator indicator-red';
+  document.getElementById('queue-indicator').title = 'Live updates disconnected — reconnecting…';
 };
 
 // ---- Stats ----

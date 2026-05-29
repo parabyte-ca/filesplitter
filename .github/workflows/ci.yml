@@ -1,0 +1,23 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Syntax check
+        run: python -m py_compile app.py db.py worker.py encoder.py splitter.py scanner.py codec_detector.py scene_detector.py scene_namer.py config.py
+
+      - name: Build Docker image
+        run: docker build --build-arg VERSION=ci-test -t filesplitter:ci .

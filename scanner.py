@@ -28,7 +28,10 @@ def scan_all() -> dict:
             logger.warning("Media path not found: %s", media_path)
             continue
 
-        for root, dirs, files in os.walk(media_path):
+        for root, dirs, files in os.walk(
+            media_path,
+            onerror=lambda e: logger.warning("Walk error: %s", e),
+        ):
             # Skip hidden directories
             dirs[:] = [d for d in dirs if not d.startswith(".")]
 

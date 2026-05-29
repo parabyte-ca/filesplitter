@@ -65,6 +65,18 @@ def split_by_scenes(
     stem, ext = os.path.splitext(input_path)
     directory = os.path.dirname(input_path)
 
+    # Guard against containers that report no duration (would produce a corrupt
+    # last segment with -to 0 and then unlink the original).
+    min_required = scene_cuts[-1] if scene_cuts else 0
+    if not probe.duration_sec or probe.duration_sec <= min_required:
+        logger.error(
+            "Invalid duration (%.1f s) for %s — aborting split",
+            probe.duration_sec or 0, input_path,
+        )
+        if progress_cb:
+            progress_cb(0, "ERROR: Cannot determine file duration — aborting split")
+        return None
+
     boundaries = [0.0] + scene_cuts + [probe.duration_sec]
     segments = list(zip(boundaries[:-1], boundaries[1:]))
     total = len(segments)

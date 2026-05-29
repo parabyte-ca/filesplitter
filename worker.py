@@ -1,5 +1,6 @@
 import logging
 import os
+import time
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
@@ -61,18 +62,21 @@ def cancel_job(job_id: int) -> bool:
 
 
 def _queue_loop() -> None:
-    import time
     while True:
-        _paused.wait()
-        job = db.dequeue_next_job()
-        if job:
-            job_dict = dict(job)
-            job_id = job_dict["id"]
-            cancel_event = threading.Event()
-            _cancel_events[job_id] = cancel_event  # register BEFORE submit
-            _executor.submit(_run_job, job_dict, cancel_event)
-        else:
-            time.sleep(3)
+        try:
+            _paused.wait()
+            job = db.dequeue_next_job()
+            if job:
+                job_dict = dict(job)
+                job_id = job_dict["id"]
+                cancel_event = threading.Event()
+                _cancel_events[job_id] = cancel_event  # register BEFORE submit
+                _executor.submit(_run_job, job_dict, cancel_event)
+            else:
+                time.sleep(3)
+        except Exception:
+            logger.exception("Queue loop error — retrying in 5s")
+            time.sleep(5)
 
 
 def _run_job(job: dict, cancel_event: threading.Event) -> None:

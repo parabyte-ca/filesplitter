@@ -1,3 +1,5 @@
+import hmac
+import ipaddress
 import json
 import logging
 import time
@@ -21,6 +23,11 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
+app.config.update(
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_HTTPONLY=True,
+    PERMANENT_SESSION_LIFETIME=86400 * 7,
+)
 
 _LOGIN_TEMPLATE = """<!doctype html>
 <html>
@@ -55,12 +62,27 @@ _LOGIN_TEMPLATE = """<!doctype html>
 </div></body></html>"""
 
 
+_LAN_NETS = [
+    ipaddress.ip_network(n) for n in [
+        "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16",
+        "127.0.0.0/8", "::1/128", "fc00::/7",
+    ]
+]
+
+
+def _is_lan(ip: str) -> bool:
+    try:
+        addr = ipaddress.ip_address(ip)
+        return any(addr in net for net in _LAN_NETS)
+    except ValueError:
+        return False
+
+
 def _requires_auth() -> bool:
+    """Require auth when DASHBOARD_PASSWORD is set and the request is not from a LAN address."""
     if not config.DASHBOARD_PASSWORD:
         return False
-    # Cloudflare Tunnel sets CF-Connecting-IP; its presence means the request
-    # arrived via the tunnel (external), not directly from the LAN.
-    return bool(request.headers.get("CF-Connecting-IP"))
+    return not _is_lan(request.remote_addr or "")
 
 
 @app.before_request
@@ -81,9 +103,13 @@ def login():
 
 @app.post("/login")
 def login_post():
-    if request.form.get("password") == config.DASHBOARD_PASSWORD:
+    if hmac.compare_digest(
+        request.form.get("password", ""),
+        config.DASHBOARD_PASSWORD,
+    ):
         session["authenticated"] = True
         return redirect("/")
+    time.sleep(1)  # slow brute-force attempts
     return render_template_string(_LOGIN_TEMPLATE, error="Incorrect password"), 401
 
 
@@ -100,6 +126,7 @@ _scan_status = {"running": False, "last_result": None}
 # --- SSE ---
 
 def _sse_stream():
+    tick = 0
     while True:
         if request.environ.get("werkzeug.is_closed") or request.environ.get("wsgi.input_terminated"):
             break
@@ -122,6 +149,11 @@ def _sse_stream():
             "version": _VERSION,
         }
         yield f"data: {json.dumps(data)}\n\n"
+        tick += 1
+        # Send a SSE comment every ~30s to keep Cloudflare Tunnel from dropping
+        # idle connections (CF cuts connections with no traffic after ~100s).
+        if tick % 15 == 0:
+            yield ": keepalive\n\n"
         time.sleep(2)
 
 
@@ -186,7 +218,7 @@ def api_scan():
 
 @app.post("/api/queue")
 def api_queue():
-    body = request.get_json(force=True)
+    body = request.get_json(force=True) or {}
     file_id = body.get("file_id")
     job_type = body.get("job_type")  # encode | split
     target_resolution = body.get("target_resolution", "original")
@@ -311,7 +343,7 @@ def api_set_saved_bytes():
 @app.post("/api/settings")
 def api_post_settings():
     """Persist runtime-adjustable settings to DB (config module re-reads on access for new jobs)."""
-    body = request.get_json(force=True)
+    body = request.get_json(force=True) or {}
     updatable = [
         "scene_threshold", "min_scene_duration", "split_min_duration",
         "split_min_size", "x265_crf", "x265_preset", "target_resolution",
@@ -335,9 +367,39 @@ def api_post_settings():
     return jsonify({"ok": True})
 
 
+# Settings that can be overridden at runtime via the UI and persisted to the DB.
+# On startup these are re-applied so container restarts don't lose UI changes.
+_SETTINGS_MAP: dict[str, tuple[str, type]] = {
+    "scene_threshold":    ("SCENE_THRESHOLD",    float),
+    "min_scene_duration": ("MIN_SCENE_DURATION",  int),
+    "scene_method":       ("SCENE_METHOD",        str),
+    "x265_crf":           ("X265_CRF",            int),
+    "x265_preset":        ("X265_PRESET",         str),
+    "target_resolution":  ("TARGET_RESOLUTION",   str),
+    "encoder_backend":    ("ENCODER_BACKEND",     str),
+    "max_workers":        ("MAX_WORKERS",         int),
+    "black_min_duration": ("BLACK_MIN_DURATION",  float),
+    "black_pix_th":       ("BLACK_PIX_TH",        float),
+    "split_min_duration": ("SPLIT_MIN_DURATION",  int),
+    "split_min_size":     ("SPLIT_MIN_SIZE",      int),
+}
+
+
+def _reload_settings_from_db() -> None:
+    """Apply persisted UI settings to config globals so they survive container restarts."""
+    for db_key, (attr, cast) in _SETTINGS_MAP.items():
+        val = db.get_setting(db_key)
+        if val:
+            try:
+                setattr(config, attr, cast(val))
+            except (ValueError, TypeError):
+                pass
+
+
 if __name__ == "__main__":
     db.init_db()
     app.secret_key = config.FLASK_SECRET_KEY or db.get_setting("secret_key")
+    _reload_settings_from_db()
     worker.start()
     logger.info("FileSplitter running on port %d", config.FLASK_PORT)
     app.run(host="0.0.0.0", port=config.FLASK_PORT, threaded=True)
