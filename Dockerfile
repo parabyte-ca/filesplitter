@@ -11,11 +11,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-RUN mkdir -p /app/data && \
-    useradd -u 1000 -m filesplitter && \
-    chown -R filesplitter:filesplitter /app
-
-USER filesplitter
+RUN mkdir -p /app/data
 
 ARG VERSION=unknown
 LABEL org.opencontainers.image.title="FileSplitter" \
