@@ -74,9 +74,13 @@ def _detect_select(
     progress_cb: Callable | None,
     start_pct: float = 2.0,
     end_pct: float = 33.0,
+    min_gap: int = None,
 ) -> list[float] | None:
     """Frame-diff scene detection using ffmpeg select filter.
     Returns list of cut timestamps, [] if none found, None if cancelled/error."""
+    if min_gap is None:
+        min_gap = config.MIN_SCENE_DURATION
+
     with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as tf:
         tmp_path = tf.name
 
@@ -99,7 +103,7 @@ def _detect_select(
             return []
 
         timestamps = _parse_timestamps(tmp_path)
-        merged = _merge_nearby(timestamps, config.MIN_SCENE_DURATION)
+        merged = _merge_nearby(timestamps, min_gap)
         logger.info("select: %d scene cuts in %s", len(merged), video_path)
         return merged
 
@@ -115,13 +119,20 @@ def _detect_black(
     progress_cb: Callable | None,
     start_pct: float = 2.0,
     end_pct: float = 33.0,
+    min_gap: int = None,
+    black_min_duration: float = None,
 ) -> list[float] | None:
     """Black-frame transition detection using ffmpeg blackdetect filter.
     Returns list of cut timestamps (midpoints of black intervals), [] if none, None if cancelled."""
+    if min_gap is None:
+        min_gap = config.MIN_SCENE_DURATION
+    if black_min_duration is None:
+        black_min_duration = config.BLACK_MIN_DURATION
+
     cmd = [
         "ffmpeg", "-y",
         "-i", video_path,
-        "-vf", f"blackdetect=d={config.BLACK_MIN_DURATION}:pix_th={config.BLACK_PIX_TH}",
+        "-vf", f"blackdetect=d={black_min_duration}:pix_th={config.BLACK_PIX_TH}",
         "-an", "-f", "null", "-",
     ]
     rc, stderr_buf = _run_ffmpeg(
@@ -143,7 +154,7 @@ def _detect_black(
             timestamps.append(midpoint)
 
     timestamps.sort()
-    merged = _merge_nearby(timestamps, config.MIN_SCENE_DURATION)
+    merged = _merge_nearby(timestamps, min_gap)
     logger.info("blackdetect: %d scene cuts in %s", len(merged), video_path)
     return merged
 
@@ -156,40 +167,90 @@ def _filter_boundary_cuts(cuts: list[float], duration_sec: float, min_gap: float
     return [t for t in cuts if t >= min_gap and t <= duration_sec - min_gap]
 
 
+def _limit_cuts(cuts: list[float], target_n: int, duration_sec: float) -> list[float]:
+    """Trim cuts to exactly target_n by repeatedly removing the cut that produces
+    the shortest adjacent segment. Used when SPLIT_EPISODE_COUNT is set."""
+    if target_n <= 0 or len(cuts) <= target_n:
+        if 0 < target_n < len(cuts):
+            logger.warning(
+                "_limit_cuts: only %d cuts found but %d expected — proceeding with %d",
+                len(cuts), target_n, len(cuts),
+            )
+        return cuts
+
+    cuts = list(cuts)
+    boundaries = [0.0] + cuts + [duration_sec]
+
+    while len(cuts) > target_n:
+        # For each cut, find the length of the shorter of its two adjacent segments.
+        # Remove the cut whose shorter neighbour is smallest (least plausible boundary).
+        min_val = None
+        min_idx = None
+        for i, _ in enumerate(cuts):
+            left = cuts[i] - boundaries[i]       # boundaries[i] is the previous boundary
+            right = boundaries[i + 2] - cuts[i]  # boundaries[i+2] is the next boundary
+            shorter = min(left, right)
+            if min_val is None or shorter < min_val:
+                min_val = shorter
+                min_idx = i
+
+        removed = cuts.pop(min_idx)
+        boundaries = [0.0] + cuts + [duration_sec]
+        logger.debug("_limit_cuts: removed cut at %.1f s (%.0f-s segment)", removed, min_val)
+
+    return cuts
+
+
 def detect_scenes(
     video_path: str,
     threshold: float = None,
     cancel_event: threading.Event | None = None,
     duration_sec: float = 0,
     progress_cb: Callable[[float, str], None] | None = None,
+    *,
+    method: str = None,
+    min_gap: int = None,
+    black_min_duration: float = None,
+    target_count: int = 0,
 ) -> list[float]:
     """
     Return a sorted list of scene-change timestamps (seconds) for the given file.
-    Nearby timestamps closer than MIN_SCENE_DURATION are merged.
-    Cuts within MIN_SCENE_DURATION of the file boundaries are discarded.
+    Nearby timestamps closer than min_gap (default MIN_SCENE_DURATION) are merged.
+    Cuts within min_gap of the file boundaries are discarded.
     Returns [] if cancelled or on error.
 
-    Dispatches based on config.SCENE_METHOD:
-      "select" — frame-diff only (original behaviour)
-      "black"  — blackdetect only (best for fade-to-black anthology content)
+    Dispatches based on method (default config.SCENE_METHOD):
+      "select" — frame-diff only
+      "black"  — blackdetect only (best for anthology episode boundaries)
       "auto"   — select first (2%→18%); fall back to blackdetect (18%→33%) if no cuts found
+
+    Optional overrides (keyword-only):
+      method            — overrides config.SCENE_METHOD
+      min_gap           — overrides config.MIN_SCENE_DURATION
+      black_min_duration — overrides config.BLACK_MIN_DURATION
+      target_count      — if >0, trim result to exactly this many cuts via _limit_cuts()
     """
     if threshold is None:
         threshold = config.SCENE_THRESHOLD
-
-    method = config.SCENE_METHOD
-    min_gap = config.MIN_SCENE_DURATION
+    if method is None:
+        method = config.SCENE_METHOD
+    if min_gap is None:
+        min_gap = config.MIN_SCENE_DURATION
 
     if method == "black":
         result = _detect_black(video_path, cancel_event, duration_sec, progress_cb,
-                               start_pct=2.0, end_pct=33.0)
+                               start_pct=2.0, end_pct=33.0,
+                               min_gap=min_gap, black_min_duration=black_min_duration)
         cuts = result if result is not None else []
-        return _filter_boundary_cuts(cuts, duration_sec, min_gap)
+        cuts = _filter_boundary_cuts(cuts, duration_sec, min_gap)
+        if target_count > 0 and duration_sec > 0:
+            cuts = _limit_cuts(cuts, target_count, duration_sec)
+        return cuts
 
     # "select" or "auto"
     select_end = 33.0 if method == "select" else 18.0
     cuts = _detect_select(video_path, threshold, cancel_event, duration_sec, progress_cb,
-                          start_pct=2.0, end_pct=select_end)
+                          start_pct=2.0, end_pct=select_end, min_gap=min_gap)
 
     if cuts is None:
         return []  # cancelled
@@ -200,10 +261,14 @@ def detect_scenes(
         if progress_cb:
             progress_cb(18.0, "No cuts found — trying black transition detection…")
         result = _detect_black(video_path, cancel_event, duration_sec, progress_cb,
-                               start_pct=18.0, end_pct=33.0)
+                               start_pct=18.0, end_pct=33.0,
+                               min_gap=min_gap, black_min_duration=black_min_duration)
         cuts = result if result is not None else []
 
-    return _filter_boundary_cuts(cuts, duration_sec, min_gap)
+    cuts = _filter_boundary_cuts(cuts, duration_sec, min_gap)
+    if target_count > 0 and duration_sec > 0:
+        cuts = _limit_cuts(cuts, target_count, duration_sec)
+    return cuts
 
 
 def _parse_timestamps(path: str) -> list[float]:

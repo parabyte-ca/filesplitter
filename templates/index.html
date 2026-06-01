@@ -415,6 +415,36 @@
           <input type="number" id="s-split-size" min="0" />
         </div>
       </div>
+
+      <!-- Split detection settings -->
+      <div class="section" style="margin-top:20px">
+        <div class="section-title">Splitting — Episode Detection</div>
+        <div class="settings-grid">
+          <div class="form-group">
+            <label>Split Detection Method</label>
+            <select id="s-split-scene-method" class="filter-select" style="width:100%">
+              <option value="black">Black transitions (recommended for anthologies)</option>
+              <option value="auto">Auto — frame diff, fall back to black transitions</option>
+              <option value="select">Frame diff only</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Min Episode Duration (seconds)</label>
+            <input type="number" id="s-split-min-ep-gap" min="60" />
+            <div style="font-size:11px;color:var(--muted);margin-top:3px">Cuts closer than this are merged. 2700 = 45 min.</div>
+          </div>
+          <div class="form-group" id="s-split-black-dur-group">
+            <label>Min Black Duration for Splits (seconds)</label>
+            <input type="number" id="s-split-black-min-dur" step="0.1" min="0.1" />
+            <div style="font-size:11px;color:var(--muted);margin-top:3px">Episode boundaries need longer fades than scene cuts. 2.0 s is a good default.</div>
+          </div>
+          <div class="form-group">
+            <label>Expected Episode Count (0 = auto)</label>
+            <input type="number" id="s-split-ep-count" min="0" max="20" />
+            <div style="font-size:11px;color:var(--muted);margin-top:3px">When set, trims excess cuts down to exactly this many episodes.</div>
+          </div>
+        </div>
+      </div>
       <div style="margin-top:16px">
         <button class="btn btn-primary" id="btn-save-settings">Save Settings</button>
         <span id="settings-msg" style="margin-left:12px;font-size:12px;color:var(--green)"></span>
@@ -834,6 +864,12 @@ async function loadSettings() {
   document.getElementById('s-split-size').value = s.split_min_size;
   _updateSceneMethodUI(s.scene_method || 'auto');
 
+  document.getElementById('s-split-scene-method').value = s.split_scene_method || 'black';
+  document.getElementById('s-split-min-ep-gap').value = s.split_min_episode_gap ?? 2700;
+  document.getElementById('s-split-black-min-dur').value = s.split_black_min_duration ?? 2.0;
+  document.getElementById('s-split-ep-count').value = s.split_episode_count ?? 0;
+  _updateSplitMethodUI(s.split_scene_method || 'black');
+
   renderPaths(s.media_paths || []);
 }
 
@@ -843,7 +879,12 @@ function _updateSceneMethodUI(method) {
   document.getElementById('s-black-pix-group').style.display = showBlack ? '' : 'none';
 }
 
+function _updateSplitMethodUI(method) {
+  document.getElementById('s-split-black-dur-group').style.display = method !== 'select' ? '' : 'none';
+}
+
 document.getElementById('s-scene-method').onchange = (e) => _updateSceneMethodUI(e.target.value);
+document.getElementById('s-split-scene-method').onchange = (e) => _updateSplitMethodUI(e.target.value);
 document.getElementById('s-backend').onchange = (e) => _updateEncoderUI(e.target.value);
 
 function renderPaths(paths) {
@@ -905,6 +946,10 @@ document.getElementById('btn-save-settings').onclick = async () => {
     min_scene_duration: parseInt(document.getElementById('s-min-scene').value),
     split_min_duration: parseInt(document.getElementById('s-split-dur').value),
     split_min_size: parseInt(document.getElementById('s-split-size').value),
+    split_scene_method: document.getElementById('s-split-scene-method').value,
+    split_min_episode_gap: parseInt(document.getElementById('s-split-min-ep-gap').value),
+    split_black_min_duration: parseFloat(document.getElementById('s-split-black-min-dur').value),
+    split_episode_count: parseInt(document.getElementById('s-split-ep-count').value) || 0,
   };
   const r = await fetch('/api/settings', {
     method: 'POST',
