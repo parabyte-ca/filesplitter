@@ -51,6 +51,10 @@ def split_by_scenes(
         cancel_event=cancel_event,
         duration_sec=probe.duration_sec or 0,
         progress_cb=progress_cb,
+        method=config.SPLIT_SCENE_METHOD,
+        min_gap=config.SPLIT_MIN_EPISODE_GAP,
+        black_min_duration=config.SPLIT_BLACK_MIN_DURATION,
+        target_count=config.SPLIT_EPISODE_COUNT - 1 if config.SPLIT_EPISODE_COUNT > 0 else 0,
     )
 
     if cancel_event and cancel_event.is_set():

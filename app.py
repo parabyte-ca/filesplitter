@@ -329,6 +329,10 @@ def api_get_settings():
         "scene_method": config.SCENE_METHOD,
         "black_min_duration": config.BLACK_MIN_DURATION,
         "black_pix_th": config.BLACK_PIX_TH,
+        "split_scene_method": config.SPLIT_SCENE_METHOD,
+        "split_min_episode_gap": config.SPLIT_MIN_EPISODE_GAP,
+        "split_black_min_duration": config.SPLIT_BLACK_MIN_DURATION,
+        "split_episode_count": config.SPLIT_EPISODE_COUNT,
     })
 
 
@@ -348,6 +352,8 @@ def api_post_settings():
         "scene_threshold", "min_scene_duration", "split_min_duration",
         "split_min_size", "x265_crf", "x265_preset", "target_resolution",
         "encoder_backend", "scene_method", "black_min_duration", "black_pix_th",
+        "split_scene_method", "split_min_episode_gap", "split_black_min_duration",
+        "split_episode_count",
     ]
     for key in updatable:
         if key in body:
@@ -380,8 +386,12 @@ _SETTINGS_MAP: dict[str, tuple[str, type]] = {
     "max_workers":        ("MAX_WORKERS",         int),
     "black_min_duration": ("BLACK_MIN_DURATION",  float),
     "black_pix_th":       ("BLACK_PIX_TH",        float),
-    "split_min_duration": ("SPLIT_MIN_DURATION",  int),
-    "split_min_size":     ("SPLIT_MIN_SIZE",      int),
+    "split_min_duration":        ("SPLIT_MIN_DURATION",        int),
+    "split_min_size":            ("SPLIT_MIN_SIZE",            int),
+    "split_scene_method":        ("SPLIT_SCENE_METHOD",        str),
+    "split_min_episode_gap":     ("SPLIT_MIN_EPISODE_GAP",     int),
+    "split_black_min_duration":  ("SPLIT_BLACK_MIN_DURATION",  float),
+    "split_episode_count":       ("SPLIT_EPISODE_COUNT",       int),
 }
 
 
