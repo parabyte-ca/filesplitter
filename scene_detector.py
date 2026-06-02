@@ -11,9 +11,10 @@ import config
 
 logger = logging.getLogger(__name__)
 
-_PTS_RE   = re.compile(r"pts_time=([0-9]+(?:\.[0-9]+)?)")
-_TIME_RE  = re.compile(r"time=(\d+):(\d+):(\d+\.\d+)")
-_BLACK_RE = re.compile(r"black_start:([0-9.]+).*?black_end:([0-9.]+)")
+_PTS_RE    = re.compile(r"pts_time=([0-9]+(?:\.[0-9]+)?)")
+_TIME_RE   = re.compile(r"time=(\d+):(\d+):(\d+\.\d+)")
+_BLACK_RE  = re.compile(r"black_start:([0-9.]+).*?black_end:([0-9.]+)")
+_FREEZE_RE = re.compile(r"freeze_(start|end):\s*([0-9.]+)")
 
 
 def _drain_stderr(
@@ -159,6 +160,60 @@ def _detect_black(
     return merged
 
 
+def _detect_freeze(
+    video_path: str,
+    cancel_event: threading.Event | None,
+    duration_sec: float,
+    progress_cb: Callable | None,
+    start_pct: float = 2.0,
+    end_pct: float = 33.0,
+    min_gap: int = None,
+    freeze_min_duration: float = None,
+) -> list[float] | None:
+    """Static-frame (title card) detection using ffmpeg freezedetect filter.
+    Returns midpoints of freeze intervals, [] if none, None if cancelled."""
+    if min_gap is None:
+        min_gap = config.MIN_SCENE_DURATION
+    if freeze_min_duration is None:
+        freeze_min_duration = config.SPLIT_FREEZE_MIN_DURATION
+
+    cmd = [
+        "ffmpeg", "-y",
+        "-i", video_path,
+        "-vf", f"freezedetect=n=0.001:d={freeze_min_duration}",
+        "-an", "-f", "null", "-",
+    ]
+    rc, stderr_buf = _run_ffmpeg(
+        cmd, cancel_event, duration_sec, progress_cb,
+        start_pct, end_pct, "Detecting title cards…"
+    )
+    if rc is None:
+        return None  # cancelled
+    if rc != 0:
+        stderr_tail = "".join(stderr_buf)[-500:]
+        logger.error("freezedetect failed for %s: %s", video_path, stderr_tail)
+        return []
+
+    freeze_starts: list[float] = []
+    freeze_ends: list[float] = []
+    for line in stderr_buf:
+        m = _FREEZE_RE.search(line)
+        if m:
+            if m.group(1) == "start":
+                freeze_starts.append(float(m.group(2)))
+            else:
+                freeze_ends.append(float(m.group(2)))
+
+    timestamps = [
+        (s + e) / 2
+        for s, e in zip(freeze_starts, freeze_ends)
+    ]
+    timestamps.sort()
+    merged = _merge_nearby(timestamps, min_gap)
+    logger.info("freezedetect: %d title cards in %s", len(merged), video_path)
+    return merged
+
+
 def _filter_boundary_cuts(cuts: list[float], duration_sec: float, min_gap: float) -> list[float]:
     """Remove cuts that are too close to the start or end of the file.
     Prevents tiny degenerate first/last segments that fail stream-copy verification."""
@@ -211,6 +266,7 @@ def detect_scenes(
     method: str = None,
     min_gap: int = None,
     black_min_duration: float = None,
+    freeze_min_duration: float = None,
     target_count: int = 0,
 ) -> list[float]:
     """
@@ -220,15 +276,18 @@ def detect_scenes(
     Returns [] if cancelled or on error.
 
     Dispatches based on method (default config.SCENE_METHOD):
-      "select" — frame-diff only
-      "black"  — blackdetect only (best for anthology episode boundaries)
-      "auto"   — select first (2%→18%); fall back to blackdetect (18%→33%) if no cuts found
+      "combined" — black transitions + title cards (static frames); union of both (recommended)
+      "black"    — blackdetect only
+      "title"    — freezedetect (static frames / title cards) only
+      "select"   — frame-diff only
+      "auto"     — select first (2%→18%); fall back to blackdetect (18%→33%) if no cuts found
 
     Optional overrides (keyword-only):
-      method            — overrides config.SCENE_METHOD
-      min_gap           — overrides config.MIN_SCENE_DURATION
-      black_min_duration — overrides config.BLACK_MIN_DURATION
-      target_count      — if >0, trim result to exactly this many cuts via _limit_cuts()
+      method              — overrides config.SCENE_METHOD
+      min_gap             — overrides config.MIN_SCENE_DURATION
+      black_min_duration  — overrides config.BLACK_MIN_DURATION
+      freeze_min_duration — overrides config.SPLIT_FREEZE_MIN_DURATION
+      target_count        — if >0, trim result to exactly this many cuts via _limit_cuts()
     """
     if threshold is None:
         threshold = config.SCENE_THRESHOLD
@@ -237,15 +296,40 @@ def detect_scenes(
     if min_gap is None:
         min_gap = config.MIN_SCENE_DURATION
 
-    if method == "black":
-        result = _detect_black(video_path, cancel_event, duration_sec, progress_cb,
-                               start_pct=2.0, end_pct=33.0,
-                               min_gap=min_gap, black_min_duration=black_min_duration)
-        cuts = result if result is not None else []
+    def _finish(cuts):
         cuts = _filter_boundary_cuts(cuts, duration_sec, min_gap)
         if target_count > 0 and duration_sec > 0:
             cuts = _limit_cuts(cuts, target_count, duration_sec)
         return cuts
+
+    if method == "combined":
+        # Run black detection (2%→18%) then freeze/title detection (18%→33%), take union.
+        black_result = _detect_black(video_path, cancel_event, duration_sec, progress_cb,
+                                     start_pct=2.0, end_pct=18.0,
+                                     min_gap=min_gap, black_min_duration=black_min_duration)
+        if cancel_event and cancel_event.is_set():
+            return []
+        freeze_result = _detect_freeze(video_path, cancel_event, duration_sec, progress_cb,
+                                       start_pct=18.0, end_pct=33.0,
+                                       min_gap=min_gap, freeze_min_duration=freeze_min_duration)
+        black_cuts = black_result if black_result is not None else []
+        freeze_cuts = freeze_result if freeze_result is not None else []
+        merged = _merge_nearby(sorted(black_cuts + freeze_cuts), min_gap)
+        logger.info("combined: %d total cuts (%d black + %d title) in %s",
+                    len(merged), len(black_cuts), len(freeze_cuts), video_path)
+        return _finish(merged)
+
+    if method == "black":
+        result = _detect_black(video_path, cancel_event, duration_sec, progress_cb,
+                               start_pct=2.0, end_pct=33.0,
+                               min_gap=min_gap, black_min_duration=black_min_duration)
+        return _finish(result if result is not None else [])
+
+    if method == "title":
+        result = _detect_freeze(video_path, cancel_event, duration_sec, progress_cb,
+                                start_pct=2.0, end_pct=33.0,
+                                min_gap=min_gap, freeze_min_duration=freeze_min_duration)
+        return _finish(result if result is not None else [])
 
     # "select" or "auto"
     select_end = 33.0 if method == "select" else 18.0
@@ -265,10 +349,7 @@ def detect_scenes(
                                min_gap=min_gap, black_min_duration=black_min_duration)
         cuts = result if result is not None else []
 
-    cuts = _filter_boundary_cuts(cuts, duration_sec, min_gap)
-    if target_count > 0 and duration_sec > 0:
-        cuts = _limit_cuts(cuts, target_count, duration_sec)
-    return cuts
+    return _finish(cuts)
 
 
 def _parse_timestamps(path: str) -> list[float]:

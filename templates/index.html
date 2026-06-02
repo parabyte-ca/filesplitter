@@ -423,7 +423,9 @@
           <div class="form-group">
             <label>Split Detection Method</label>
             <select id="s-split-scene-method" class="filter-select" style="width:100%">
-              <option value="black">Black transitions (recommended for anthologies)</option>
+              <option value="combined">Black transitions + title cards (recommended)</option>
+              <option value="black">Black transitions only</option>
+              <option value="title">Title cards / static frames only</option>
               <option value="auto">Auto — frame diff, fall back to black transitions</option>
               <option value="select">Frame diff only</option>
             </select>
@@ -436,7 +438,12 @@
           <div class="form-group" id="s-split-black-dur-group">
             <label>Min Black Duration for Splits (seconds)</label>
             <input type="number" id="s-split-black-min-dur" step="0.1" min="0.1" />
-            <div style="font-size:11px;color:var(--muted);margin-top:3px">Episode boundaries need longer fades than scene cuts. 2.0 s is a good default.</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:3px">Episode fades are ≥2 s; within-scene cuts are &lt;1 s.</div>
+          </div>
+          <div class="form-group" id="s-split-freeze-dur-group">
+            <label>Min Title Card Duration (seconds)</label>
+            <input type="number" id="s-split-freeze-min-dur" step="0.1" min="0.1" />
+            <div style="font-size:11px;color:var(--muted);margin-top:3px">Minimum seconds of static image to count as a title card boundary.</div>
           </div>
           <div class="form-group">
             <label>Expected Episode Count (0 = auto)</label>
@@ -905,11 +912,12 @@ async function loadSettings() {
   document.getElementById('s-split-size').value = s.split_min_size;
   _updateSceneMethodUI(s.scene_method || 'auto');
 
-  document.getElementById('s-split-scene-method').value = s.split_scene_method || 'black';
+  document.getElementById('s-split-scene-method').value = s.split_scene_method || 'combined';
   document.getElementById('s-split-min-ep-gap').value = s.split_min_episode_gap ?? 2700;
   document.getElementById('s-split-black-min-dur').value = s.split_black_min_duration ?? 2.0;
+  document.getElementById('s-split-freeze-min-dur').value = s.split_freeze_min_duration ?? 2.0;
   document.getElementById('s-split-ep-count').value = s.split_episode_count ?? 0;
-  _updateSplitMethodUI(s.split_scene_method || 'black');
+  _updateSplitMethodUI(s.split_scene_method || 'combined');
 
   renderPaths(s.media_paths || []);
 }
@@ -921,7 +929,10 @@ function _updateSceneMethodUI(method) {
 }
 
 function _updateSplitMethodUI(method) {
-  document.getElementById('s-split-black-dur-group').style.display = method !== 'select' ? '' : 'none';
+  const showBlack = method === 'combined' || method === 'black';
+  const showFreeze = method === 'combined' || method === 'title';
+  document.getElementById('s-split-black-dur-group').style.display = showBlack ? '' : 'none';
+  document.getElementById('s-split-freeze-dur-group').style.display = showFreeze ? '' : 'none';
 }
 
 document.getElementById('s-scene-method').onchange = (e) => _updateSceneMethodUI(e.target.value);
@@ -990,6 +1001,7 @@ document.getElementById('btn-save-settings').onclick = async () => {
     split_scene_method: document.getElementById('s-split-scene-method').value,
     split_min_episode_gap: parseInt(document.getElementById('s-split-min-ep-gap').value),
     split_black_min_duration: parseFloat(document.getElementById('s-split-black-min-dur').value),
+    split_freeze_min_duration: parseFloat(document.getElementById('s-split-freeze-min-dur').value),
     split_episode_count: parseInt(document.getElementById('s-split-ep-count').value) || 0,
   };
   const r = await fetch('/api/settings', {
