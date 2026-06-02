@@ -32,6 +32,7 @@ def split_by_scenes(
     input_path: str,
     progress_cb: Callable[[float, str], None] | None = None,
     cancel_event: threading.Event | None = None,
+    episode_count: int = 0,
 ) -> list[str] | None:
     """
     Detect scenes and split input_path into scene files via stream copy.
@@ -46,6 +47,7 @@ def split_by_scenes(
     if progress_cb:
         progress_cb(2.0, "Detecting scenes…")
 
+    effective_episode_count = episode_count if episode_count > 0 else config.SPLIT_EPISODE_COUNT
     scene_cuts = scene_detector.detect_scenes(
         input_path,
         cancel_event=cancel_event,
@@ -54,7 +56,7 @@ def split_by_scenes(
         method=config.SPLIT_SCENE_METHOD,
         min_gap=config.SPLIT_MIN_EPISODE_GAP,
         black_min_duration=config.SPLIT_BLACK_MIN_DURATION,
-        target_count=config.SPLIT_EPISODE_COUNT - 1 if config.SPLIT_EPISODE_COUNT > 0 else 0,
+        target_count=effective_episode_count - 1 if effective_episode_count > 0 else 0,
     )
 
     if cancel_event and cancel_event.is_set():

@@ -222,6 +222,7 @@ def api_queue():
     file_id = body.get("file_id")
     job_type = body.get("job_type")  # encode | split
     target_resolution = body.get("target_resolution", "original")
+    episode_count = int(body.get("episode_count", 0) or 0)
 
     if not file_id or job_type not in ("encode", "split"):
         return jsonify({"ok": False, "msg": "Invalid parameters"}), 400
@@ -230,7 +231,7 @@ def api_queue():
     if file_row is None:
         return jsonify({"ok": False, "msg": "File not found"}), 404
 
-    job_id = db.create_job(file_id, job_type, target_resolution)
+    job_id = db.create_job(file_id, job_type, target_resolution, episode_count)
     db.set_file_status(file_id, "queued")
     return jsonify({"ok": True, "job_id": job_id})
 

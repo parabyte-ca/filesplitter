@@ -84,6 +84,7 @@ def _run_job(job: dict, cancel_event: threading.Event) -> None:
     file_id = job["file_id"]
     job_type = job["job_type"]
     target_res = job.get("target_resolution", "original")
+    episode_count = job.get("episode_count") or 0
 
     file_row = db.get_file(file_id)
     if file_row is None:
@@ -148,6 +149,7 @@ def _run_job(job: dict, cancel_event: threading.Event) -> None:
                 input_path,
                 progress_cb=progress_cb,
                 cancel_event=cancel_event,
+                episode_count=episode_count,
             )
             if cancel_event.is_set():
                 db.set_file_status(file_id, "pending")

@@ -68,6 +68,7 @@ def init_db() -> None:
         "ALTER TABLE files ADD COLUMN width INTEGER DEFAULT 0",
         "ALTER TABLE files ADD COLUMN height INTEGER DEFAULT 0",
         "ALTER TABLE jobs ADD COLUMN saved_bytes INTEGER DEFAULT 0",
+        "ALTER TABLE jobs ADD COLUMN episode_count INTEGER DEFAULT 0",
     ]:
         try:
             conn.execute(_ddl)
@@ -246,12 +247,13 @@ def get_stats() -> dict:
 
 # --- Jobs ---
 
-def create_job(file_id: int, job_type: str, target_resolution: str = "original") -> int:
+def create_job(file_id: int, job_type: str, target_resolution: str = "original",
+               episode_count: int = 0) -> int:
     with connect() as conn:
         cur = conn.execute(
-            """INSERT INTO jobs (file_id, job_type, status, target_resolution)
-               VALUES (?, ?, 'queued', ?)""",
-            (file_id, job_type, target_resolution),
+            """INSERT INTO jobs (file_id, job_type, status, target_resolution, episode_count)
+               VALUES (?, ?, 'queued', ?, ?)""",
+            (file_id, job_type, target_resolution, episode_count),
         )
         return cur.lastrowid
 

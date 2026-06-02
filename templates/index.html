@@ -477,6 +477,27 @@
 </div>
 
 <!-- Encode Modal -->
+<div class="modal-overlay" id="split-modal">
+  <div class="modal">
+    <h3>Queue Split Job</h3>
+    <div class="form-group">
+      <label>File</label>
+      <input id="split-modal-filename" type="text" readonly style="color:var(--muted)" />
+    </div>
+    <div class="form-group">
+      <label>Expected Episode Count <span style="color:var(--muted);font-weight:normal">(0 = use global setting)</span></label>
+      <input type="number" id="split-modal-ep-count" min="0" max="20" value="0" />
+      <div style="font-size:11px;color:var(--muted);margin-top:3px">
+        Override the episode count for this file only. Leave 0 to use the value from Settings.
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" id="split-modal-cancel">Cancel</button>
+      <button class="btn btn-primary" id="split-modal-confirm">Queue Split</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="encode-modal">
   <div class="modal">
     <h3>Queue Encode Job</h3>
@@ -690,7 +711,7 @@ function renderFiles() {
         actions.push(`<button class="btn btn-sm" onclick="openEncodeModal(${f.id})">Encode</button>`);
       }
       if (f.is_anthology) {
-        actions.push(`<button class="btn btn-sm" onclick="queueJob(${f.id}, 'split')">Split</button>`);
+        actions.push(`<button class="btn btn-sm" onclick="openSplitModal(${f.id}, ${JSON.stringify(f.filename)})">Split</button>`);
       }
       if (f.status !== 'skipped' && f.status !== 'done') {
         actions.push(`<button class="btn btn-sm" onclick="skipFile(${f.id})">Skip</button>`);
@@ -738,15 +759,35 @@ document.getElementById('modal-confirm').onclick = async () => {
 };
 
 // ---- Actions ----
-async function queueJob(fileId, type, resolution) {
+async function queueJob(fileId, type, resolution, episodeCount) {
   resolution = resolution || document.getElementById('s-resolution')?.value || 'original';
   const r = await fetch('/api/queue', {
     method: 'POST',
     headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({file_id: fileId, job_type: type, target_resolution: resolution}),
+    body: JSON.stringify({file_id: fileId, job_type: type, target_resolution: resolution, episode_count: episodeCount || 0}),
   });
   if (r.ok) await loadFiles();
 }
+
+let _splitModalFileId = null;
+function openSplitModal(fileId, filename) {
+  _splitModalFileId = fileId;
+  document.getElementById('split-modal-filename').value = filename;
+  document.getElementById('split-modal-ep-count').value = document.getElementById('s-split-ep-count')?.value || 0;
+  document.getElementById('split-modal').classList.add('open');
+}
+document.getElementById('split-modal-cancel').onclick = () => {
+  document.getElementById('split-modal').classList.remove('open');
+};
+document.getElementById('split-modal').onclick = (e) => {
+  if (e.target === document.getElementById('split-modal'))
+    document.getElementById('split-modal').classList.remove('open');
+};
+document.getElementById('split-modal-confirm').onclick = async () => {
+  const epCount = parseInt(document.getElementById('split-modal-ep-count').value) || 0;
+  document.getElementById('split-modal').classList.remove('open');
+  await queueJob(_splitModalFileId, 'split', null, epCount);
+};
 
 async function skipFile(fileId) {
   const r = await fetch(`/api/skip/${fileId}`, { method: 'POST' });
