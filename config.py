@@ -29,9 +29,10 @@ SCENE_METHOD: str = os.environ.get("SCENE_METHOD", "auto")
 BLACK_MIN_DURATION: float = float(os.environ.get("BLACK_MIN_DURATION", "0.5"))
 BLACK_PIX_TH: float = float(os.environ.get("BLACK_PIX_TH", "0.10"))
 
-SPLIT_SCENE_METHOD: str = os.environ.get("SPLIT_SCENE_METHOD", "black")
+SPLIT_SCENE_METHOD: str = os.environ.get("SPLIT_SCENE_METHOD", "combined")
 SPLIT_MIN_EPISODE_GAP: int = int(os.environ.get("SPLIT_MIN_EPISODE_GAP", "2700"))  # 45 min
 SPLIT_BLACK_MIN_DURATION: float = float(os.environ.get("SPLIT_BLACK_MIN_DURATION", "2.0"))
+SPLIT_FREEZE_MIN_DURATION: float = float(os.environ.get("SPLIT_FREEZE_MIN_DURATION", "2.0"))
 SPLIT_EPISODE_COUNT: int = int(os.environ.get("SPLIT_EPISODE_COUNT", "0"))  # 0 = auto
 
 SPLIT_MIN_DURATION: int = int(os.environ.get("SPLIT_MIN_DURATION", "5400"))   # 90 min

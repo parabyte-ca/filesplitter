@@ -56,6 +56,7 @@ def split_by_scenes(
         method=config.SPLIT_SCENE_METHOD,
         min_gap=config.SPLIT_MIN_EPISODE_GAP,
         black_min_duration=config.SPLIT_BLACK_MIN_DURATION,
+        freeze_min_duration=config.SPLIT_FREEZE_MIN_DURATION,
         target_count=effective_episode_count - 1 if effective_episode_count > 0 else 0,
     )
 
