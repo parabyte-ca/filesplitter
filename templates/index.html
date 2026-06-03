@@ -860,16 +860,26 @@ document.getElementById('btn-pause').onclick = async () => {
   await fetch(isPaused ? '/api/queue/resume' : '/api/queue/pause', {method:'POST'});
 };
 
-document.getElementById('btn-queue-all-encode').onclick = async () => {
-  const pending = allFiles.filter(f => f.status === 'pending' && f.codec !== 'hevc');
-  for (const f of pending) await queueJob(f.id, 'encode');
-  await loadFiles();
+document.getElementById('btn-queue-all-encode').onclick = async (e) => {
+  const btn = e.currentTarget;
+  if (btn.disabled) return;
+  btn.disabled = true;
+  try {
+    const pending = allFiles.filter(f => f.status === 'pending' && f.codec !== 'hevc');
+    for (const f of pending) await queueJob(f.id, 'encode');
+    await loadFiles();
+  } finally { btn.disabled = false; }
 };
 
-document.getElementById('btn-queue-all-split').onclick = async () => {
-  const pending = allFiles.filter(f => f.status === 'pending' && f.is_anthology);
-  for (const f of pending) await queueJob(f.id, 'split');
-  await loadFiles();
+document.getElementById('btn-queue-all-split').onclick = async (e) => {
+  const btn = e.currentTarget;
+  if (btn.disabled) return;
+  btn.disabled = true;
+  try {
+    const pending = allFiles.filter(f => f.status === 'pending' && f.is_anthology);
+    for (const f of pending) await queueJob(f.id, 'split');
+    await loadFiles();
+  } finally { btn.disabled = false; }
 };
 
 // ---- Settings ----
