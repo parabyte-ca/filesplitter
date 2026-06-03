@@ -16,7 +16,10 @@ def _is_anthology(filename: str, size_bytes: int, duration_sec: float) -> bool:
         return False  # TV episode naming (S01E02) — never an anthology
     long_enough = bool(duration_sec and duration_sec >= config.SPLIT_MIN_DURATION)
     big_enough  = bool(size_bytes  and size_bytes  >= config.SPLIT_MIN_SIZE)
-    return long_enough or big_enough
+    if not (long_enough or big_enough):
+        return False
+    lower = filename.lower()
+    return any(k.lower() in lower for k in config.SPLIT_KEYWORDS)
 
 
 def scan_all() -> dict:
@@ -56,7 +59,11 @@ def scan_all() -> dict:
                         errors += 1
                         continue
 
-                    anthology = _is_anthology(fname, info.size_bytes, info.duration_sec)
+                    # Respect manual override — don't recalculate if user has overridden
+                    if existing and existing["anthology_override"] is not None:
+                        anthology = bool(existing["anthology_override"])
+                    else:
+                        anthology = _is_anthology(fname, info.size_bytes, info.duration_sec)
                     db.upsert_file(
                         path=full_path,
                         filename=fname,

@@ -187,6 +187,17 @@ def api_files():
     return jsonify([dict(r) for r in rows])
 
 
+@app.post("/api/files/<int:file_id>/anthology")
+def api_set_anthology(file_id: int):
+    body = request.get_json(force=True) or {}
+    raw = body.get("value")  # True, False, or None (reset to auto)
+    override = None if raw is None else bool(raw)
+    if db.get_file(file_id) is None:
+        return jsonify({"ok": False, "msg": "File not found"}), 404
+    db.set_anthology_override(file_id, override)
+    return jsonify({"ok": True})
+
+
 @app.get("/api/jobs")
 def api_jobs():
     rows = db.get_recent_jobs(50)
@@ -316,7 +327,7 @@ def api_get_settings():
         "min_scene_duration": config.MIN_SCENE_DURATION,
         "split_min_duration": config.SPLIT_MIN_DURATION,
         "split_min_size": config.SPLIT_MIN_SIZE,
-        "split_keywords": config.SPLIT_KEYWORDS,
+        "split_keywords": ",".join(config.SPLIT_KEYWORDS),
         "x265_crf": config.X265_CRF,
         "x265_preset": config.X265_PRESET,
         "target_resolution": config.TARGET_RESOLUTION,
@@ -355,13 +366,15 @@ def api_post_settings():
         "split_min_size", "x265_crf", "x265_preset", "target_resolution",
         "encoder_backend", "scene_method", "black_min_duration", "black_pix_th",
         "split_scene_method", "split_min_episode_gap", "split_black_min_duration",
-        "split_freeze_min_duration", "split_episode_count",
+        "split_freeze_min_duration", "split_episode_count", "split_keywords",
     ]
     for key in updatable:
         if key in body:
             val = body[key]
             db.set_setting(key, str(val))
-            if hasattr(config, key.upper()):
+            if key == "split_keywords":
+                config.SPLIT_KEYWORDS = [k.strip() for k in str(val).split(",") if k.strip()]
+            elif hasattr(config, key.upper()):
                 try:
                     attr = getattr(config, key.upper())
                     if isinstance(attr, int):
@@ -390,6 +403,7 @@ _SETTINGS_MAP: dict[str, tuple[str, type]] = {
     "black_pix_th":       ("BLACK_PIX_TH",        float),
     "split_min_duration":        ("SPLIT_MIN_DURATION",        int),
     "split_min_size":            ("SPLIT_MIN_SIZE",            int),
+    "split_keywords":            ("SPLIT_KEYWORDS",            str),
     "split_scene_method":        ("SPLIT_SCENE_METHOD",        str),
     "split_min_episode_gap":     ("SPLIT_MIN_EPISODE_GAP",     int),
     "split_black_min_duration":  ("SPLIT_BLACK_MIN_DURATION",  float),
@@ -404,7 +418,10 @@ def _reload_settings_from_db() -> None:
         val = db.get_setting(db_key)
         if val:
             try:
-                setattr(config, attr, cast(val))
+                if attr == "SPLIT_KEYWORDS":
+                    setattr(config, attr, [k.strip() for k in val.split(",") if k.strip()])
+                else:
+                    setattr(config, attr, cast(val))
             except (ValueError, TypeError):
                 pass
 
