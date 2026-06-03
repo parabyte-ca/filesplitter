@@ -718,7 +718,7 @@ function renderFiles() {
       ? `<span class="badge badge-anthology" style="cursor:pointer" title="Click to mark as movie" onclick="toggleAnthology(${f.id}, false)">${anthologyLabel}</span>`
       : (isManual
           ? `<span class="badge" style="cursor:pointer;opacity:0.6" title="Click to mark as anthology" onclick="toggleAnthology(${f.id}, true)">${notAnthologyLabel}</span>`
-          : `<span class="badge badge-${f.codec === 'hevc' ? 'x265' : 'pending'}" style="cursor:pointer" title="Click to mark as anthology" onclick="toggleAnthology(${f.id}, true)">${escHtml(f.codec || '?')}</span>`);
+          : `<span class="badge badge-${f.codec === 'hevc' ? 'x265' : 'pending'}" style="cursor:pointer" title="Click to mark as anthology" onclick="toggleAnthology(${f.id}, true)">${escHtml(f.codec || '?')} ✎</span>`);
 
     const actions = [];
     if (f.status === 'processing' || f.status === 'queued') {
@@ -729,6 +729,8 @@ function renderFiles() {
       }
       actions.push(`<button class="btn btn-sm" onclick="openSplitModal(${f.id})">Split</button>`);
       if (f.status !== 'skipped' && f.status !== 'done') {
+        const anthLabel = f.is_anthology ? '− Anthology' : '+ Anthology';
+        actions.push(`<button class="btn btn-sm" onclick="toggleAnthology(${f.id}, ${!f.is_anthology})">${anthLabel}</button>`);
         actions.push(`<button class="btn btn-sm" onclick="skipFile(${f.id})">Skip</button>`);
       }
     }
