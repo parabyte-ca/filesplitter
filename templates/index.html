@@ -598,14 +598,15 @@ function updateStats(s) {
 }
 
 // ---- Jobs ----
-function fmtElapsed(startedAt) {
-  if (!startedAt) return '';
-  const secs = Math.floor((Date.now() - new Date(startedAt)) / 1000);
-  if (secs < 0) return '';
-  const h = Math.floor(secs / 3600);
-  const m = Math.floor((secs % 3600) / 60);
-  const s = secs % 60;
-  return h > 0 ? `${h}h ${m}m` : m > 0 ? `${m}m ${s}s` : `${s}s`;
+function fmtEta(startedAt, progressPct) {
+  if (!startedAt || !progressPct || progressPct <= 0) return '';
+  const elapsed = (Date.now() - new Date(startedAt)) / 1000;
+  if (elapsed < 0) return '';
+  const remaining = Math.floor(elapsed * (100 - progressPct) / progressPct);
+  const h = Math.floor(remaining / 3600);
+  const m = Math.floor((remaining % 3600) / 60);
+  const s = remaining % 60;
+  return '~' + (h > 0 ? `${h}h ${m}m` : m > 0 ? `${m}m ${s}s` : `${s}s`);
 }
 
 function updateJobs(jobs) {
@@ -619,7 +620,7 @@ function updateJobs(jobs) {
       <div class="job-header">
         <span class="badge badge-${j.status}">${j.type}</span>
         <span class="job-filename" title="${escHtml(j.file)}">${escHtml(j.file)}</span>
-        ${j.status === 'running' && j.started_at ? `<span style="font-size:11px;color:var(--muted)" title="Running time">${fmtElapsed(j.started_at)}</span>` : ''}
+        ${j.status === 'running' && j.started_at && j.progress > 0 ? `<span style="font-size:11px;color:var(--muted)" title="Estimated time remaining">${fmtEta(j.started_at, j.progress)}</span>` : ''}
         <span style="font-size:12px;color:var(--muted)">${j.progress}%</span>
         <button class="btn btn-sm btn-danger" onclick="cancelJob(${j.id})">Cancel</button>
       </div>
