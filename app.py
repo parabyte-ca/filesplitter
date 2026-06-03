@@ -242,6 +242,9 @@ def api_queue():
     if file_row is None:
         return jsonify({"ok": False, "msg": "File not found"}), 404
 
+    if db.get_active_job_for_file(file_id) is not None:
+        return jsonify({"ok": False, "msg": "File already queued or processing"}), 409
+
     job_id = db.create_job(file_id, job_type, target_resolution, episode_count)
     db.set_file_status(file_id, "queued")
     return jsonify({"ok": True, "job_id": job_id})
