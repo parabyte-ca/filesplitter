@@ -727,9 +727,7 @@ function renderFiles() {
       if (f.codec !== 'hevc') {
         actions.push(`<button class="btn btn-sm" onclick="openEncodeModal(${f.id})">Encode</button>`);
       }
-      if (f.is_anthology) {
-        actions.push(`<button class="btn btn-sm" onclick="openSplitModal(${f.id})">Split</button>`);
-      }
+      actions.push(`<button class="btn btn-sm" onclick="openSplitModal(${f.id})">Split</button>`);
       if (f.status !== 'skipped' && f.status !== 'done') {
         actions.push(`<button class="btn btn-sm" onclick="skipFile(${f.id})">Skip</button>`);
       }
