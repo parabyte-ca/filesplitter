@@ -718,7 +718,7 @@ function renderFiles() {
         actions.push(`<button class="btn btn-sm" onclick="openEncodeModal(${f.id})">Encode</button>`);
       }
       if (f.is_anthology) {
-        actions.push(`<button class="btn btn-sm" onclick="openSplitModal(${f.id}, ${JSON.stringify(f.filename)})">Split</button>`);
+        actions.push(`<button class="btn btn-sm" onclick="openSplitModal(${f.id})">Split</button>`);
       }
       if (f.status !== 'skipped' && f.status !== 'done') {
         actions.push(`<button class="btn btn-sm" onclick="skipFile(${f.id})">Skip</button>`);
@@ -777,9 +777,10 @@ async function queueJob(fileId, type, resolution, episodeCount) {
 }
 
 let _splitModalFileId = null;
-function openSplitModal(fileId, filename) {
+function openSplitModal(fileId) {
+  const f = allFiles.find(x => x.id === fileId);
   _splitModalFileId = fileId;
-  document.getElementById('split-modal-filename').value = filename;
+  document.getElementById('split-modal-filename').value = f ? f.filename : '';
   document.getElementById('split-modal-ep-count').value = document.getElementById('s-split-ep-count')?.value || 0;
   document.getElementById('split-modal').classList.add('open');
 }
