@@ -306,6 +306,14 @@
             <tr><td colspan="7" class="empty">Loading…</td></tr>
           </tbody>
         </table>
+        <div id="files-pagination" style="display:none;align-items:center;justify-content:space-between;padding:12px 4px 0;font-size:13px;color:var(--muted)">
+          <span id="pagination-info"></span>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button class="btn btn-sm" id="btn-prev-page">← Prev</button>
+            <span id="pagination-page" style="min-width:80px;text-align:center"></span>
+            <button class="btn btn-sm" id="btn-next-page">Next →</button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -535,6 +543,8 @@
 <script>
 // ---- State ----
 let allFiles = [];
+const PAGE_SIZE = 50;
+let currentPage = 1;
 let resolutions = ['original'];
 let pendingEncodeFileId = null;
 let isPaused = false;
@@ -699,8 +709,26 @@ function renderFiles() {
     }
   });
 
+  const totalFiltered = rows.length;
+  const totalPages = Math.max(1, Math.ceil(totalFiltered / PAGE_SIZE));
+  if (currentPage > totalPages) currentPage = totalPages;
+  const pageStart = (currentPage - 1) * PAGE_SIZE;
+  rows = rows.slice(pageStart, pageStart + PAGE_SIZE);
+
+  const paginationDiv = document.getElementById('files-pagination');
+  if (totalFiltered > PAGE_SIZE) {
+    paginationDiv.style.display = 'flex';
+    document.getElementById('pagination-info').textContent =
+      `Showing ${pageStart + 1}–${pageStart + rows.length} of ${totalFiltered}`;
+    document.getElementById('pagination-page').textContent = `Page ${currentPage} of ${totalPages}`;
+    document.getElementById('btn-prev-page').disabled = currentPage === 1;
+    document.getElementById('btn-next-page').disabled = currentPage === totalPages;
+  } else {
+    paginationDiv.style.display = 'none';
+  }
+
   const body = document.getElementById('files-body');
-  if (rows.length === 0) {
+  if (totalFiltered === 0) {
     body.innerHTML = '<tr><td colspan="7" class="empty">No files found</td></tr>';
     return;
   }
@@ -1076,14 +1104,19 @@ document.querySelectorAll('th.sortable').forEach(th => {
       sortCol = th.dataset.sort;
       sortDir = 1;
     }
+    currentPage = 1;
     renderFiles();
   };
 });
 
+// ---- Pagination ----
+document.getElementById('btn-prev-page').onclick = () => { currentPage--; renderFiles(); };
+document.getElementById('btn-next-page').onclick = () => { currentPage++; renderFiles(); };
+
 // ---- Search/filter ----
-document.getElementById('search').oninput = renderFiles;
-document.getElementById('filter-status').onchange = renderFiles;
-document.getElementById('filter-type').onchange = renderFiles;
+document.getElementById('search').oninput = () => { currentPage = 1; renderFiles(); };
+document.getElementById('filter-status').onchange = () => { currentPage = 1; renderFiles(); };
+document.getElementById('filter-type').onchange = () => { currentPage = 1; renderFiles(); };
 
 // ---- Init ----
 loadSettings();
