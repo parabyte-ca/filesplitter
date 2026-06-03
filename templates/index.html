@@ -414,6 +414,11 @@
           <label>Anthology Min File Size (bytes, e.g. 4294967296 = 4GB)</label>
           <input type="number" id="s-split-size" min="0" />
         </div>
+        <div class="form-group">
+          <label>Anthology Keywords (comma-separated)</label>
+          <input type="text" id="s-split-keywords" placeholder="Vol,Compilation,Anthology,Collection,Kink" style="width:100%" />
+          <div style="font-size:11px;color:var(--muted);margin-top:3px">Files must contain one of these words AND meet the size/duration threshold to be flagged as anthology.</div>
+        </div>
       </div>
 
       <!-- Split detection settings -->
@@ -706,9 +711,14 @@ function renderFiles() {
       statusCell += `<div class="error-detail" title="${escHtml(f.error_msg)}">${escHtml(f.error_msg.slice(0, 80))}</div>`;
     }
 
+    const isManual = f.anthology_override !== null && f.anthology_override !== undefined;
+    const anthologyLabel = isManual ? 'Anthology ✎' : 'Anthology';
+    const notAnthologyLabel = isManual ? 'Movie ✎' : '';
     const typeBadge = f.is_anthology
-      ? '<span class="badge badge-anthology">Anthology</span>'
-      : `<span class="badge badge-${f.codec === 'hevc' ? 'x265' : 'pending'}">${escHtml(f.codec || '?')}</span>`;
+      ? `<span class="badge badge-anthology" style="cursor:pointer" title="Click to mark as movie" onclick="toggleAnthology(${f.id}, false)">${anthologyLabel}</span>`
+      : (isManual
+          ? `<span class="badge" style="cursor:pointer;opacity:0.6" title="Click to mark as anthology" onclick="toggleAnthology(${f.id}, true)">${notAnthologyLabel}</span>`
+          : `<span class="badge badge-${f.codec === 'hevc' ? 'x265' : 'pending'}" style="cursor:pointer" title="Click to mark as anthology" onclick="toggleAnthology(${f.id}, true)">${escHtml(f.codec || '?')}</span>`);
 
     const actions = [];
     if (f.status === 'processing' || f.status === 'queued') {
@@ -801,6 +811,20 @@ async function skipFile(fileId) {
   const r = await fetch(`/api/skip/${fileId}`, { method: 'POST' });
   if (r.ok) await loadFiles();
 }
+
+async function toggleAnthology(fileId, makeAnthology) {
+  const f = allFiles.find(x => x.id === fileId);
+  const isManual = f && f.anthology_override !== null && f.anthology_override !== undefined;
+  // If already manually set to this value, clicking again resets to auto
+  const newValue = (isManual && bool(f.anthology_override) === makeAnthology) ? null : makeAnthology;
+  await fetch(`/api/files/${fileId}/anthology`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({value: newValue}),
+  });
+  await loadFiles();
+}
+function bool(v) { return v === 1 || v === true; }
 
 async function cancelJob(jobId) {
   const r = await fetch(`/api/jobs/${jobId}/cancel`, { method: 'POST' });
@@ -911,6 +935,7 @@ async function loadSettings() {
   document.getElementById('s-min-scene').value = s.min_scene_duration;
   document.getElementById('s-split-dur').value = s.split_min_duration;
   document.getElementById('s-split-size').value = s.split_min_size;
+  document.getElementById('s-split-keywords').value = s.split_keywords || '';
   _updateSceneMethodUI(s.scene_method || 'auto');
 
   document.getElementById('s-split-scene-method').value = s.split_scene_method || 'combined';
@@ -999,6 +1024,7 @@ document.getElementById('btn-save-settings').onclick = async () => {
     min_scene_duration: parseInt(document.getElementById('s-min-scene').value),
     split_min_duration: parseInt(document.getElementById('s-split-dur').value),
     split_min_size: parseInt(document.getElementById('s-split-size').value),
+    split_keywords: document.getElementById('s-split-keywords').value,
     split_scene_method: document.getElementById('s-split-scene-method').value,
     split_min_episode_gap: parseInt(document.getElementById('s-split-min-ep-gap').value),
     split_black_min_duration: parseFloat(document.getElementById('s-split-black-min-dur').value),
