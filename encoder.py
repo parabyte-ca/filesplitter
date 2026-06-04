@@ -173,8 +173,8 @@ def encode_to_x265(
         err_msg = None
         if out_probe is None:
             err_msg = "Output file verification failed: could not probe output file"
-        elif out_probe.codec != "hevc":
-            err_msg = f"Output file verification failed: codec is '{out_probe.codec}', expected 'hevc'"
+        elif not out_probe.is_x265:
+            err_msg = f"Output file verification failed: codec is '{out_probe.codec}', expected hevc"
         elif probe.duration_sec > 0:
             diff_pct = abs(out_probe.duration_sec - probe.duration_sec) / probe.duration_sec * 100
             if diff_pct > 10.0:
