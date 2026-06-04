@@ -283,6 +283,14 @@
         <option value="anthology">Anthologies</option>
         <option value="normal">Normal</option>
       </select>
+      <select class="filter-select" id="filter-res">
+        <option value="">All resolutions</option>
+        <option value="2160">4K (2160p)</option>
+        <option value="1080">1080p</option>
+        <option value="720">720p</option>
+        <option value="480">480p</option>
+        <option value="other">Other / Unknown</option>
+      </select>
       <div class="toolbar-spacer"></div>
       <button class="btn btn-sm" id="btn-purge">Purge Missing</button>
       <button class="btn btn-sm" id="btn-queue-all-encode">Queue All (Encode)</button>
@@ -297,13 +305,14 @@
               <th class="sortable" data-sort="codec">Codec</th>
               <th class="sortable" data-sort="duration_sec">Duration</th>
               <th class="sortable" data-sort="size_bytes">Size</th>
+              <th class="sortable" data-sort="height">Res</th>
               <th class="sortable" data-sort="is_anthology">Type</th>
               <th class="sortable" data-sort="status">Status</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody id="files-body">
-            <tr><td colspan="7" class="empty">Loading…</td></tr>
+            <tr><td colspan="8" class="empty">Loading…</td></tr>
           </tbody>
         </table>
         <div id="files-pagination" style="display:none;align-items:center;justify-content:space-between;padding:12px 4px 0;font-size:13px;color:var(--muted)">
@@ -655,6 +664,17 @@ async function loadJobHistory() {
 }
 
 // ---- Files ----
+function fmtRes(w, h) {
+  if (!h) return '—';
+  if (h >= 2160) return '4K';
+  if (h >= 1080) return '1080p';
+  if (h >= 720)  return '720p';
+  if (h >= 540)  return '540p';
+  if (h >= 480)  return '480p';
+  if (h >= 360)  return '360p';
+  return `${h}p`;
+}
+
 function fmtDur(s) {
   if (!s) return '—';
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = Math.floor(s % 60);
@@ -684,12 +704,21 @@ function renderFiles() {
   const q = document.getElementById('search').value.toLowerCase();
   const fs = document.getElementById('filter-status').value;
   const ft = document.getElementById('filter-type').value;
+  const fr = document.getElementById('filter-res').value;
 
   let rows = allFiles.filter(f => {
     if (q && !f.filename.toLowerCase().includes(q)) return false;
     if (fs && f.status !== fs) return false;
     if (ft === 'anthology' && !f.is_anthology) return false;
     if (ft === 'normal' && f.is_anthology) return false;
+    if (fr) {
+      const h = f.height || 0;
+      if (fr === 'other' && (h >= 480)) return false;
+      if (fr === '2160' && h < 2160) return false;
+      if (fr === '1080' && (h < 1080 || h >= 2160)) return false;
+      if (fr === '720'  && (h < 720  || h >= 1080)) return false;
+      if (fr === '480'  && (h < 480  || h >= 720))  return false;
+    }
     return true;
   });
 
@@ -730,7 +759,7 @@ function renderFiles() {
 
   const body = document.getElementById('files-body');
   if (totalFiltered === 0) {
-    body.innerHTML = '<tr><td colspan="7" class="empty">No files found</td></tr>';
+    body.innerHTML = '<tr><td colspan="8" class="empty">No files found</td></tr>';
     return;
   }
 
@@ -769,6 +798,7 @@ function renderFiles() {
       <td><code style="font-size:11px">${escHtml(f.codec || '?')}</code></td>
       <td>${fmtDur(f.duration_sec)}</td>
       <td>${fmtSize(f.size_bytes)}</td>
+      <td style="font-size:11px;color:var(--muted)" title="${f.width && f.height ? `${f.width}×${f.height}` : ''}">${fmtRes(f.width, f.height)}</td>
       <td>${typeBadge}</td>
       <td>${statusCell}</td>
       <td style="white-space:nowrap">${actions.join(' ')}</td>
@@ -1118,6 +1148,7 @@ document.getElementById('btn-next-page').onclick = () => { currentPage++; render
 document.getElementById('search').oninput = () => { currentPage = 1; renderFiles(); };
 document.getElementById('filter-status').onchange = () => { currentPage = 1; renderFiles(); };
 document.getElementById('filter-type').onchange = () => { currentPage = 1; renderFiles(); };
+document.getElementById('filter-res').onchange = () => { currentPage = 1; renderFiles(); };
 
 // ---- Init ----
 loadSettings();
