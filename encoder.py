@@ -169,9 +169,20 @@ def encode_to_x265(
             _cleanup(tmp_path)
             return False
 
-        if not codec_detector.verify_file(tmp_path, expected_codec="hevc",
-                                          ref_duration=probe.duration_sec):
-            err_msg = "Output file verification failed (codec or duration mismatch)"
+        out_probe = codec_detector.probe(tmp_path)
+        err_msg = None
+        if out_probe is None:
+            err_msg = "Output file verification failed: could not probe output file"
+        elif out_probe.codec != "hevc":
+            err_msg = f"Output file verification failed: codec is '{out_probe.codec}', expected 'hevc'"
+        elif probe.duration_sec > 0:
+            diff_pct = abs(out_probe.duration_sec - probe.duration_sec) / probe.duration_sec * 100
+            if diff_pct > 10.0:
+                err_msg = (
+                    f"Output file verification failed: duration {out_probe.duration_sec:.0f}s "
+                    f"vs expected {probe.duration_sec:.0f}s ({diff_pct:.1f}% diff, tolerance 10%)"
+                )
+        if err_msg:
             logger.error("%s: %s", err_msg, tmp_path)
             if progress_cb:
                 progress_cb(current_pct, f"ERROR: {err_msg}")
