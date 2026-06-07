@@ -784,6 +784,8 @@ function renderFiles() {
     } else {
       if (f.codec !== 'hevc') {
         actions.push(`<button class="btn btn-sm" onclick="openEncodeModal(${f.id})">Encode</button>`);
+      } else {
+        actions.push(`<button class="btn btn-sm" onclick="openEncodeModal(${f.id})">Transcode</button>`);
       }
       actions.push(`<button class="btn btn-sm" onclick="openSplitModal(${f.id})">Split</button>`);
       if (f.status !== 'skipped' && f.status !== 'done') {
