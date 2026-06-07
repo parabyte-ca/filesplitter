@@ -109,6 +109,10 @@
 
   .toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
   .toolbar-spacer { flex: 1; }
+  .bulk-bar { display:none; align-items:center; gap:10px; margin-bottom:10px; padding:8px 12px; background:rgba(108,99,255,0.12); border:1px solid rgba(108,99,255,0.3); border-radius:8px; font-size:13px; }
+  .bulk-bar.active { display:flex; }
+  input[type=checkbox] { accent-color:#6c63ff; width:15px; height:15px; cursor:pointer; }
+  tr.row-selected td { background:rgba(108,99,255,0.07); }
   .search-input {
     padding: 6px 12px;
     background: var(--surface);
@@ -296,11 +300,19 @@
       <button class="btn btn-sm" id="btn-queue-all-encode">Queue All (Encode)</button>
       <button class="btn btn-sm" id="btn-queue-all-split">Queue All Anthologies (Split)</button>
     </div>
+    <div class="bulk-bar" id="bulk-bar">
+      <span id="bulk-count" style="color:var(--purple);font-weight:600"></span>
+      <button class="btn btn-sm" id="btn-bulk-encode">Encode Selected</button>
+      <button class="btn btn-sm" id="btn-bulk-split">Split Selected</button>
+      <button class="btn btn-sm" id="btn-bulk-skip">Skip Selected</button>
+      <button class="btn btn-sm" id="btn-bulk-clear" style="margin-left:auto;color:var(--muted)">Clear selection</button>
+    </div>
     <div class="card">
       <div class="table-scroll">
         <table id="files-table">
           <thead>
             <tr>
+              <th style="width:32px"><input type="checkbox" id="chk-all" title="Select all on this page"></th>
               <th class="sortable" data-sort="filename">Filename</th>
               <th class="sortable" data-sort="codec">Codec</th>
               <th class="sortable" data-sort="duration_sec">Duration</th>
@@ -312,7 +324,7 @@
             </tr>
           </thead>
           <tbody id="files-body">
-            <tr><td colspan="8" class="empty">Loading…</td></tr>
+            <tr><td colspan="9" class="empty">Loading…</td></tr>
           </tbody>
         </table>
         <div id="files-pagination" style="display:none;align-items:center;justify-content:space-between;padding:12px 4px 0;font-size:13px;color:var(--muted)">
@@ -554,6 +566,7 @@
 let allFiles = [];
 const PAGE_SIZE = 50;
 let currentPage = 1;
+let selectedFiles = new Set();
 let resolutions = ['original'];
 let pendingEncodeFileId = null;
 let isPaused = false;
@@ -759,7 +772,7 @@ function renderFiles() {
 
   const body = document.getElementById('files-body');
   if (totalFiltered === 0) {
-    body.innerHTML = '<tr><td colspan="8" class="empty">No files found</td></tr>';
+    body.innerHTML = '<tr><td colspan="9" class="empty">No files found</td></tr>';
     return;
   }
 
@@ -795,7 +808,9 @@ function renderFiles() {
       }
     }
 
-    return `<tr>
+    const checked = selectedFiles.has(f.id) ? 'checked' : '';
+    return `<tr class="${selectedFiles.has(f.id) ? 'row-selected' : ''}">
+      <td><input type="checkbox" ${checked} onchange="toggleSelect(${f.id}, this.checked)"></td>
       <td title="${escHtml(f.path)}" style="max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(f.filename)}</td>
       <td><code style="font-size:11px">${escHtml(f.codec || '?')}</code></td>
       <td>${fmtDur(f.duration_sec)}</td>
@@ -806,6 +821,13 @@ function renderFiles() {
       <td style="white-space:nowrap">${actions.join(' ')}</td>
     </tr>`;
   }).join('');
+
+  // Sync select-all checkbox
+  const chkAll = document.getElementById('chk-all');
+  const pageIds = rows.map(f => f.id);
+  chkAll.checked = pageIds.length > 0 && pageIds.every(id => selectedFiles.has(id));
+  chkAll.indeterminate = !chkAll.checked && pageIds.some(id => selectedFiles.has(id));
+  _updateBulkBar();
 }
 
 async function loadFiles() {
@@ -886,6 +908,112 @@ async function toggleAnthology(fileId, makeAnthology) {
   await loadFiles();
 }
 function bool(v) { return v === 1 || v === true; }
+
+// ---- Multi-select ----
+function toggleSelect(fileId, checked) {
+  if (checked) selectedFiles.add(fileId);
+  else selectedFiles.delete(fileId);
+  _updateBulkBar();
+  // sync select-all state
+  const chkAll = document.getElementById('chk-all');
+  const visibleIds = allFiles.filter(f => {
+    const q = document.getElementById('search').value.toLowerCase();
+    const fs = document.getElementById('filter-status').value;
+    const ft = document.getElementById('filter-type').value;
+    const fr = document.getElementById('filter-res').value;
+    if (q && !f.filename.toLowerCase().includes(q)) return false;
+    if (fs && f.status !== fs) return false;
+    if (ft === 'anthology' && !f.is_anthology) return false;
+    if (ft === 'normal' && f.is_anthology) return false;
+    if (fr) {
+      const h = f.height || 0;
+      if (fr === 'other' && h >= 480) return false;
+      if (fr === '2160' && h < 2160) return false;
+      if (fr === '1080' && (h < 1080 || h >= 2160)) return false;
+      if (fr === '720'  && (h < 720  || h >= 1080)) return false;
+      if (fr === '480'  && (h < 480  || h >= 720))  return false;
+    }
+    return true;
+  }).map(f => f.id);
+  chkAll.checked = visibleIds.length > 0 && visibleIds.every(id => selectedFiles.has(id));
+  chkAll.indeterminate = !chkAll.checked && visibleIds.some(id => selectedFiles.has(id));
+}
+
+function _updateBulkBar() {
+  const bar = document.getElementById('bulk-bar');
+  const count = selectedFiles.size;
+  if (count > 0) {
+    bar.classList.add('active');
+    document.getElementById('bulk-count').textContent = `${count} file${count !== 1 ? 's' : ''} selected`;
+  } else {
+    bar.classList.remove('active');
+  }
+}
+
+document.getElementById('chk-all').onchange = (e) => {
+  // Select/deselect all files matching current filters (all pages)
+  const q = document.getElementById('search').value.toLowerCase();
+  const fs = document.getElementById('filter-status').value;
+  const ft = document.getElementById('filter-type').value;
+  const fr = document.getElementById('filter-res').value;
+  allFiles.filter(f => {
+    if (q && !f.filename.toLowerCase().includes(q)) return false;
+    if (fs && f.status !== fs) return false;
+    if (ft === 'anthology' && !f.is_anthology) return false;
+    if (ft === 'normal' && f.is_anthology) return false;
+    if (fr) {
+      const h = f.height || 0;
+      if (fr === 'other' && h >= 480) return false;
+      if (fr === '2160' && h < 2160) return false;
+      if (fr === '1080' && (h < 1080 || h >= 2160)) return false;
+      if (fr === '720'  && (h < 720  || h >= 1080)) return false;
+      if (fr === '480'  && (h < 480  || h >= 720))  return false;
+    }
+    return true;
+  }).forEach(f => { if (e.target.checked) selectedFiles.add(f.id); else selectedFiles.delete(f.id); });
+  renderFiles();
+};
+
+document.getElementById('btn-bulk-clear').onclick = () => { selectedFiles.clear(); renderFiles(); };
+
+document.getElementById('btn-bulk-encode').onclick = async (e) => {
+  const btn = e.currentTarget;
+  if (btn.disabled) return;
+  btn.disabled = true;
+  try {
+    const ids = [...selectedFiles];
+    for (const id of ids) await queueJob(id, 'encode');
+    selectedFiles.clear();
+    await loadFiles();
+  } finally { btn.disabled = false; }
+};
+
+document.getElementById('btn-bulk-split').onclick = async (e) => {
+  const btn = e.currentTarget;
+  if (btn.disabled) return;
+  btn.disabled = true;
+  try {
+    const ids = [...selectedFiles];
+    for (const id of ids) await queueJob(id, 'split');
+    selectedFiles.clear();
+    await loadFiles();
+  } finally { btn.disabled = false; }
+};
+
+document.getElementById('btn-bulk-skip').onclick = async (e) => {
+  const btn = e.currentTarget;
+  if (btn.disabled) return;
+  btn.disabled = true;
+  try {
+    const ids = [...selectedFiles];
+    for (const id of ids) {
+      const r = await fetch(`/api/skip/${id}`, { method: 'POST' });
+      if (!r.ok) { const d = await r.json(); console.warn('Skip failed', id, d.msg); }
+    }
+    selectedFiles.clear();
+    await loadFiles();
+  } finally { btn.disabled = false; }
+};
 
 async function cancelJob(jobId) {
   const r = await fetch(`/api/jobs/${jobId}/cancel`, { method: 'POST' });
@@ -1147,10 +1275,10 @@ document.getElementById('btn-prev-page').onclick = () => { currentPage--; render
 document.getElementById('btn-next-page').onclick = () => { currentPage++; renderFiles(); };
 
 // ---- Search/filter ----
-document.getElementById('search').oninput = () => { currentPage = 1; renderFiles(); };
-document.getElementById('filter-status').onchange = () => { currentPage = 1; renderFiles(); };
-document.getElementById('filter-type').onchange = () => { currentPage = 1; renderFiles(); };
-document.getElementById('filter-res').onchange = () => { currentPage = 1; renderFiles(); };
+document.getElementById('search').oninput = () => { currentPage = 1; selectedFiles.clear(); renderFiles(); };
+document.getElementById('filter-status').onchange = () => { currentPage = 1; selectedFiles.clear(); renderFiles(); };
+document.getElementById('filter-type').onchange = () => { currentPage = 1; selectedFiles.clear(); renderFiles(); };
+document.getElementById('filter-res').onchange = () => { currentPage = 1; selectedFiles.clear(); renderFiles(); };
 
 // ---- Init ----
 loadSettings();
