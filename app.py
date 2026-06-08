@@ -7,7 +7,8 @@ import threading
 from pathlib import Path
 
 from flask import (Flask, jsonify, render_template, render_template_string,
-                   request, Response, redirect, session, stream_with_context)
+                   request, Response, redirect, session, stream_with_context,
+                   send_from_directory)
 
 import config
 import db
@@ -177,6 +178,29 @@ def index():
         version=_VERSION,
         show_logout=bool(config.DASHBOARD_PASSWORD),
     )
+
+
+# --- PWA static assets ---
+
+_STATIC = Path(__file__).parent / "static"
+
+
+@app.get("/manifest.json")
+def pwa_manifest():
+    return send_from_directory(_STATIC, "manifest.json", mimetype="application/manifest+json")
+
+
+@app.get("/sw.js")
+def pwa_sw():
+    resp = send_from_directory(_STATIC, "sw.js", mimetype="application/javascript")
+    resp.headers["Service-Worker-Allowed"] = "/"
+    resp.headers["Cache-Control"] = "no-cache"
+    return resp
+
+
+@app.get("/icons/<path:filename>")
+def pwa_icons(filename: str):
+    return send_from_directory(_STATIC / "icons", filename)
 
 
 # --- API ---

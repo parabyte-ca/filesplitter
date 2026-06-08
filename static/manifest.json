@@ -1,0 +1,37 @@
+{
+  "name": "FileSplitter",
+  "short_name": "FileSplitter",
+  "description": "Video encoding and scene-splitting dashboard",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f0f13",
+  "theme_color": "#6c63ff",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ],
+  "categories": ["utilities"],
+  "shortcuts": [
+    {
+      "name": "Scan for Files",
+      "url": "/?action=scan",
+      "description": "Trigger a media scan"
+    }
+  ]
+}
