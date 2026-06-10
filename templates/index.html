@@ -223,6 +223,9 @@
 
   .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
+  /* Keep the files table scrollable on mobile rather than hiding columns */
+  #files-table { min-width: 780px; }
+
   @media (max-width: 640px) {
     .container { padding: 12px; }
     header { flex-wrap: wrap; gap: 8px; padding: 10px 12px; }
@@ -233,8 +236,7 @@
     .stat-card .num { font-size: 22px; }
     .search-input { width: 100%; }
     .filter-select { flex: 1; min-width: 110px; }
-    #files-table th:nth-child(2), #files-table td:nth-child(2),
-    #files-table th:nth-child(3), #files-table td:nth-child(3) { display: none; }
+    .bulk-bar { flex-wrap: wrap; }
     #history-container th:nth-child(4), #history-container td:nth-child(4) { display: none; }
     td, th { padding: 8px 10px; }
     .modal { width: auto; margin: 12px; }
@@ -310,6 +312,7 @@
     </div>
     <div class="bulk-bar" id="bulk-bar">
       <span id="bulk-count" style="color:var(--purple);font-weight:600"></span>
+      <select id="bulk-resolution" class="filter-select" style="font-size:12px;padding:3px 8px" title="Output resolution for Encode Selected"></select>
       <button class="btn btn-sm" id="btn-bulk-encode">Encode Selected</button>
       <button class="btn btn-sm" id="btn-bulk-split">Split Selected</button>
       <button class="btn btn-sm" id="btn-bulk-skip">Skip Selected</button>
@@ -988,9 +991,10 @@ document.getElementById('btn-bulk-encode').onclick = async (e) => {
   const btn = e.currentTarget;
   if (btn.disabled) return;
   btn.disabled = true;
+  const res = document.getElementById('bulk-resolution').value || 'original';
   try {
     const ids = [...selectedFiles];
-    for (const id of ids) await queueJob(id, 'encode');
+    for (const id of ids) await queueJob(id, 'encode', res);
     selectedFiles.clear();
     await loadFiles();
   } finally { btn.disabled = false; }
@@ -1126,6 +1130,7 @@ async function loadSettings() {
   const opts = resolutions.map(r => `<option value="${r}" ${r === s.target_resolution ? 'selected' : ''}>${r}</option>`).join('');
   document.getElementById('s-resolution').innerHTML = opts;
   document.getElementById('modal-resolution').innerHTML = opts;
+  document.getElementById('bulk-resolution').innerHTML = opts;
 
   // Encoder backend
   const backend = s.encoder_backend || 'cpu';
