@@ -1030,13 +1030,16 @@ document.getElementById('btn-bulk-skip').onclick = async (e) => {
 async function cancelJob(jobId) {
   const r = await fetch(`/api/jobs/${jobId}/cancel`, { method: 'POST' });
   const d = await r.json();
-  if (!r.ok) alert(d.msg || 'Cancel failed');
+  if (!r.ok) { alert(d.msg || 'Cancel failed'); return; }
+  await loadFiles();
+  loadJobHistory();
 }
 
 async function cancelFile(fileId) {
   const r = await fetch(`/api/files/${fileId}/cancel`, { method: 'POST' });
   const d = await r.json();
-  if (!r.ok) alert(d.msg || 'Cancel failed');
+  if (!r.ok) { alert(d.msg || 'Cancel failed'); return; }
+  await loadFiles();
 }
 
 document.getElementById('btn-purge').onclick = async () => {
