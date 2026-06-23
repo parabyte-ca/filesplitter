@@ -121,7 +121,7 @@ def logout():
 
 
 _scan_lock = threading.Lock()
-_scan_status = {"running": False, "last_result": None}
+_scan_status = {"running": False}
 
 
 # --- SSE ---
@@ -241,8 +241,7 @@ def api_scan():
     def _run():
         _scan_status["running"] = True
         try:
-            result = scanner.scan_all()
-            _scan_status["last_result"] = result
+            scanner.scan_all()
         finally:
             _scan_status["running"] = False
 

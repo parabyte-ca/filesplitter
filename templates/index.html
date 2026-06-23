@@ -20,6 +20,7 @@
     --text: #e2e8f0;
     --muted: #64748b;
     --accent: #6366f1;
+    --purple: #6c63ff;
     --green: #22c55e;
     --yellow: #eab308;
     --red: #ef4444;
@@ -724,27 +725,30 @@ function historyLog(j) {
   return '';
 }
 
-function renderFiles() {
-  const q = document.getElementById('search').value.toLowerCase();
+function _getFilteredFiles() {
+  const q  = document.getElementById('search').value.toLowerCase();
   const fs = document.getElementById('filter-status').value;
   const ft = document.getElementById('filter-type').value;
   const fr = document.getElementById('filter-res').value;
-
-  let rows = allFiles.filter(f => {
-    if (q && !f.filename.toLowerCase().includes(q)) return false;
+  return allFiles.filter(f => {
+    if (q  && !f.filename.toLowerCase().includes(q)) return false;
     if (fs && f.status !== fs) return false;
     if (ft === 'anthology' && !f.is_anthology) return false;
-    if (ft === 'normal' && f.is_anthology) return false;
+    if (ft === 'normal'    &&  f.is_anthology) return false;
     if (fr) {
       const h = f.height || 0;
-      if (fr === 'other' && (h >= 480)) return false;
-      if (fr === '2160' && h < 2160) return false;
-      if (fr === '1080' && (h < 1080 || h >= 2160)) return false;
-      if (fr === '720'  && (h < 720  || h >= 1080)) return false;
-      if (fr === '480'  && (h < 480  || h >= 720))  return false;
+      if (fr === 'other' && h >= 480) return false;
+      if (fr === '2160'  && h < 2160) return false;
+      if (fr === '1080'  && (h < 1080 || h >= 2160)) return false;
+      if (fr === '720'   && (h < 720  || h >= 1080)) return false;
+      if (fr === '480'   && (h < 480  || h >= 720))  return false;
     }
     return true;
   });
+}
+
+function renderFiles() {
+  let rows = _getFilteredFiles();
 
   rows.sort((a, b) => {
     let av = a[sortCol], bv = b[sortCol];
@@ -927,25 +931,7 @@ function toggleSelect(fileId, checked) {
   _updateBulkBar();
   // sync select-all state
   const chkAll = document.getElementById('chk-all');
-  const visibleIds = allFiles.filter(f => {
-    const q = document.getElementById('search').value.toLowerCase();
-    const fs = document.getElementById('filter-status').value;
-    const ft = document.getElementById('filter-type').value;
-    const fr = document.getElementById('filter-res').value;
-    if (q && !f.filename.toLowerCase().includes(q)) return false;
-    if (fs && f.status !== fs) return false;
-    if (ft === 'anthology' && !f.is_anthology) return false;
-    if (ft === 'normal' && f.is_anthology) return false;
-    if (fr) {
-      const h = f.height || 0;
-      if (fr === 'other' && h >= 480) return false;
-      if (fr === '2160' && h < 2160) return false;
-      if (fr === '1080' && (h < 1080 || h >= 2160)) return false;
-      if (fr === '720'  && (h < 720  || h >= 1080)) return false;
-      if (fr === '480'  && (h < 480  || h >= 720))  return false;
-    }
-    return true;
-  }).map(f => f.id);
+  const visibleIds = _getFilteredFiles().map(f => f.id);
   chkAll.checked = visibleIds.length > 0 && visibleIds.every(id => selectedFiles.has(id));
   chkAll.indeterminate = !chkAll.checked && visibleIds.some(id => selectedFiles.has(id));
 }
@@ -963,25 +949,7 @@ function _updateBulkBar() {
 
 document.getElementById('chk-all').onchange = (e) => {
   // Select/deselect all files matching current filters (all pages)
-  const q = document.getElementById('search').value.toLowerCase();
-  const fs = document.getElementById('filter-status').value;
-  const ft = document.getElementById('filter-type').value;
-  const fr = document.getElementById('filter-res').value;
-  allFiles.filter(f => {
-    if (q && !f.filename.toLowerCase().includes(q)) return false;
-    if (fs && f.status !== fs) return false;
-    if (ft === 'anthology' && !f.is_anthology) return false;
-    if (ft === 'normal' && f.is_anthology) return false;
-    if (fr) {
-      const h = f.height || 0;
-      if (fr === 'other' && h >= 480) return false;
-      if (fr === '2160' && h < 2160) return false;
-      if (fr === '1080' && (h < 1080 || h >= 2160)) return false;
-      if (fr === '720'  && (h < 720  || h >= 1080)) return false;
-      if (fr === '480'  && (h < 480  || h >= 720))  return false;
-    }
-    return true;
-  }).forEach(f => { if (e.target.checked) selectedFiles.add(f.id); else selectedFiles.delete(f.id); });
+  _getFilteredFiles().forEach(f => { if (e.target.checked) selectedFiles.add(f.id); else selectedFiles.delete(f.id); });
   renderFiles();
 };
 
