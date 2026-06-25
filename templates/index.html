@@ -332,11 +332,12 @@
               <th class="sortable" data-sort="height">Res</th>
               <th class="sortable" data-sort="is_anthology">Type</th>
               <th class="sortable" data-sort="status">Status</th>
+              <th class="sortable" data-sort="discovered_at">Added</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody id="files-body">
-            <tr><td colspan="9" class="empty">Loading…</td></tr>
+            <tr><td colspan="10" class="empty">Loading…</td></tr>
           </tbody>
         </table>
         <div id="files-pagination" style="display:none;align-items:center;justify-content:space-between;padding:12px 4px 0;font-size:13px;color:var(--muted)">
@@ -582,8 +583,8 @@ let selectedFiles = new Set();
 let resolutions = ['original'];
 let pendingEncodeFileId = null;
 let isPaused = false;
-let sortCol = 'filename';
-let sortDir = 1; // 1=asc, -1=desc
+let sortCol = 'discovered_at';
+let sortDir = -1; // 1=asc, -1=desc
 
 // ---- SSE ----
 const es = new EventSource('/stream');
@@ -711,6 +712,11 @@ function fmtSize(b) {
   if (b >= 1e6) return (b / 1e6).toFixed(1) + ' MB';
   return (b / 1e3).toFixed(0) + ' KB';
 }
+function fmtDate(s) {
+  if (!s) return '—';
+  const d = new Date(s);
+  return isNaN(d) ? '—' : d.toLocaleDateString(undefined, {year:'numeric', month:'short', day:'numeric'});
+}
 function escHtml(s) {
   return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
@@ -787,7 +793,7 @@ function renderFiles() {
 
   const body = document.getElementById('files-body');
   if (totalFiltered === 0) {
-    body.innerHTML = '<tr><td colspan="9" class="empty">No files found</td></tr>';
+    body.innerHTML = '<tr><td colspan="10" class="empty">No files found</td></tr>';
     return;
   }
 
@@ -833,6 +839,7 @@ function renderFiles() {
       <td style="font-size:11px;color:var(--muted)" title="${f.width && f.height ? `${f.width}×${f.height}` : ''}">${fmtRes(f.width, f.height)}</td>
       <td>${typeBadge}</td>
       <td>${statusCell}</td>
+      <td style="font-size:11px;color:var(--muted);white-space:nowrap">${fmtDate(f.discovered_at)}</td>
       <td style="white-space:nowrap">${actions.join(' ')}</td>
     </tr>`;
   }).join('');
