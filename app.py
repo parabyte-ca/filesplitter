@@ -2,17 +2,19 @@ import hmac
 import ipaddress
 import json
 import logging
+import os
 import time
 import threading
 from pathlib import Path
 
 from flask import (Flask, jsonify, render_template, render_template_string,
                    request, Response, redirect, session, stream_with_context,
-                   send_from_directory)
+                   send_from_directory, send_file, abort)
 
 import config
 import db
 import scanner
+import trash
 import worker
 
 _VERSION = (Path(__file__).parent / "VERSION").read_text().strip()
@@ -208,7 +210,80 @@ def pwa_icons(filename: str):
 @app.get("/api/files")
 def api_files():
     rows = db.get_all_files()
-    return jsonify([dict(r) for r in rows])
+    result = []
+    for r in rows:
+        d = dict(r)
+        d["category"] = config.categorize(d["path"])
+        result.append(d)
+    return jsonify(result)
+
+
+@app.get("/api/files/<int:file_id>/stream")
+def api_stream_file(file_id: int):
+    """Serve the raw media file for in-browser preview (Range-enabled) or download."""
+    row = db.get_file(file_id)
+    if row is None:
+        abort(404)
+    path = row["path"]
+    # Defensive: only serve files that live under a configured media root.
+    if trash._media_root_for(path) is None or not os.path.isfile(path):
+        abort(404)
+    as_attachment = request.args.get("download") == "1"
+    return send_file(path, conditional=True, as_attachment=as_attachment,
+                     download_name=row["filename"])
+
+
+@app.post("/api/files/<int:file_id>/rename")
+def api_rename_file(file_id: int):
+    import scene_namer
+    row = db.get_file(file_id)
+    if row is None:
+        return jsonify({"ok": False, "msg": "File not found"}), 404
+    if db.get_active_job_for_file(file_id) is not None:
+        return jsonify({"ok": False, "msg": "Cannot rename while a job is active"}), 409
+
+    body = request.get_json(force=True) or {}
+    raw_name = (body.get("new_name") or "").strip()
+    old_path = row["path"]
+    directory = os.path.dirname(old_path)
+    ext = os.path.splitext(old_path)[1]
+
+    # Sanitize; strip any extension the user typed so we keep the original one.
+    base = scene_namer.sanitize(os.path.splitext(raw_name)[0])
+    if not base:
+        return jsonify({"ok": False, "msg": "Invalid name"}), 400
+    new_filename = base + ext
+    new_path = os.path.join(directory, new_filename)
+
+    if new_path == old_path:
+        return jsonify({"ok": True, "msg": "No change"})
+    if os.path.exists(new_path):
+        return jsonify({"ok": False, "msg": "A file with that name already exists"}), 409
+
+    try:
+        os.rename(old_path, new_path)
+    except OSError as exc:
+        return jsonify({"ok": False, "msg": f"Rename failed: {exc}"}), 500
+    db.rename_file(file_id, new_path, new_filename)
+    return jsonify({"ok": True, "filename": new_filename})
+
+
+@app.post("/api/files/<int:file_id>/delete")
+def api_delete_file(file_id: int):
+    row = db.get_file(file_id)
+    if row is None:
+        return jsonify({"ok": False, "msg": "File not found"}), 404
+    if db.get_active_job_for_file(file_id) is not None:
+        return jsonify({"ok": False, "msg": "Cannot delete while a job is active"}), 409
+
+    path = row["path"]
+    if os.path.exists(path):
+        try:
+            trash.move_to_trash(path)
+        except OSError as exc:
+            return jsonify({"ok": False, "msg": f"Delete failed: {exc}"}), 500
+    db.delete_file(file_id)
+    return jsonify({"ok": True})
 
 
 @app.post("/api/files/<int:file_id>/anthology")
@@ -452,10 +527,21 @@ def _reload_settings_from_db() -> None:
                 pass
 
 
+def _trash_cleanup_loop() -> None:
+    """Purge .trash entries older than 30 days on startup, then once every 24 hours."""
+    while True:
+        try:
+            trash.cleanup_trash(max_age_days=30)
+        except Exception as exc:
+            logger.error("Trash cleanup failed: %s", exc)
+        time.sleep(86400)
+
+
 if __name__ == "__main__":
     db.init_db()
     app.secret_key = config.FLASK_SECRET_KEY or db.get_setting("secret_key")
     _reload_settings_from_db()
     worker.start()
+    threading.Thread(target=_trash_cleanup_loop, daemon=True).start()
     logger.info("FileSplitter running on port %d", config.FLASK_PORT)
     app.run(host="0.0.0.0", port=config.FLASK_PORT, threaded=True)
