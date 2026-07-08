@@ -319,6 +319,22 @@ def purge_missing_files() -> int:
         return len(missing_ids)
 
 
+def delete_file(file_id: int) -> None:
+    """Remove a single file record and its associated job rows."""
+    with connect() as conn:
+        conn.execute("DELETE FROM jobs WHERE file_id=?", (file_id,))
+        conn.execute("DELETE FROM files WHERE id=?", (file_id,))
+
+
+def rename_file(file_id: int, new_path: str, new_filename: str) -> None:
+    """Update a file's path/filename after an on-disk rename, bumping updated_at."""
+    with connect() as conn:
+        conn.execute(
+            "UPDATE files SET path=?, filename=?, updated_at=? WHERE id=?",
+            (new_path, new_filename, _now(), file_id),
+        )
+
+
 def clear_finished_jobs() -> int:
     with connect() as conn:
         cur = conn.execute(
@@ -336,18 +352,25 @@ def get_recent_jobs(limit: int = 20) -> list[sqlite3.Row]:
         """, (limit,)).fetchall()
 
 
-def update_file_size(file_id: int, size_bytes: int, codec: str = None) -> None:
+def update_file_size(file_id: int, size_bytes: int, codec: str = None,
+                     width: int = None, height: int = None) -> None:
+    """Update size (and optionally codec/width/height) after a transcode, bumping updated_at."""
+    sets = ["size_bytes=?"]
+    params: list = [size_bytes]
+    if codec:
+        sets.append("codec=?")
+        params.append(codec)
+    if width is not None:
+        sets.append("width=?")
+        params.append(width)
+    if height is not None:
+        sets.append("height=?")
+        params.append(height)
+    sets.append("updated_at=?")
+    params.append(_now())
+    params.append(file_id)
     with connect() as conn:
-        if codec:
-            conn.execute(
-                "UPDATE files SET size_bytes=?, codec=?, updated_at=? WHERE id=?",
-                (size_bytes, codec, _now(), file_id),
-            )
-        else:
-            conn.execute(
-                "UPDATE files SET size_bytes=?, updated_at=? WHERE id=?",
-                (size_bytes, _now(), file_id),
-            )
+        conn.execute(f"UPDATE files SET {', '.join(sets)} WHERE id=?", params)
 
 
 def update_job_progress(job_id: int, progress_pct: float, log_tail: str = None,

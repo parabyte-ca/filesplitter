@@ -55,10 +55,11 @@ def encode_to_x265(
     preset: str | None = None,
     progress_cb: Callable[[float, str], None] | None = None,
     cancel_event: threading.Event | None = None,
-) -> bool:
+) -> "codec_detector.ProbeResult | None":
     """
     Re-encode input_path to HEVC, replacing the original on success.
-    Returns True on success, False on failure or cancellation.
+    Returns the output file's ProbeResult (codec/width/height/duration/size) on success,
+    or None on failure or cancellation.
     Cancellation is signalled via cancel_event; check cancel_event.is_set() to distinguish.
     """
     if crf is None:
@@ -71,7 +72,7 @@ def encode_to_x265(
     probe = codec_detector.probe(input_path)
     if probe is None:
         logger.error("Cannot probe %s", input_path)
-        return False
+        return None
 
     ext = os.path.splitext(input_path)[1]
     tmp_path = os.path.join(
@@ -146,7 +147,7 @@ def encode_to_x265(
                     proc.wait()
                 stderr_thread.join(timeout=2)
                 _cleanup(tmp_path)
-                return False
+                return None
 
             if line.startswith("out_time_us=") and duration_us > 0:
                 try:
@@ -167,7 +168,7 @@ def encode_to_x265(
             if progress_cb:
                 progress_cb(current_pct, f"ERROR: {err_msg}")
             _cleanup(tmp_path)
-            return False
+            return None
 
         out_probe = codec_detector.probe(tmp_path)
         err_msg = None
@@ -187,18 +188,18 @@ def encode_to_x265(
             if progress_cb:
                 progress_cb(current_pct, f"ERROR: {err_msg}")
             _cleanup(tmp_path)
-            return False
+            return None
 
         os.replace(tmp_path, input_path)
         logger.info("Replaced %s with hevc encode (%s)", input_path, effective_backend)
-        return True
+        return out_probe
 
     except Exception as exc:
         logger.error("Encode error for %s: %s", input_path, exc)
         if progress_cb:
             progress_cb(0, f"ERROR: {exc}")
         _cleanup(tmp_path)
-        return False
+        return None
     finally:
         if proc is not None and proc.poll() is None:
             proc.terminate()

@@ -114,7 +114,7 @@ def _run_job(job: dict, cancel_event: threading.Event) -> None:
 
     try:
         if job_type == "encode":
-            success = encoder.encode_to_x265(
+            out_probe = encoder.encode_to_x265(
                 input_path,
                 target_resolution=target_res,
                 progress_cb=progress_cb,
@@ -124,10 +124,15 @@ def _run_job(job: dict, cancel_event: threading.Event) -> None:
                 db.set_file_status(file_id, "pending")
                 db.set_job_status(job_id, "cancelled")
                 db.update_job_progress(job_id, 0, "Cancelled by user")
-            elif success:
+            elif out_probe is not None:
                 orig_bytes = file_row["size_bytes"] or 0
                 new_bytes = os.path.getsize(input_path)
-                db.update_file_size(file_id, new_bytes, codec="hevc")
+                db.update_file_size(
+                    file_id, new_bytes,
+                    codec=out_probe.codec,
+                    width=out_probe.width,
+                    height=out_probe.height,
+                )
                 saved = max(0, orig_bytes - new_bytes)
                 savings_pct = (saved / orig_bytes) * 100 if orig_bytes else 0
                 done_msg = (

@@ -21,6 +21,40 @@ def _parse_paths(raw: str) -> list[str]:
 
 MEDIA_PATHS: list[str] = _parse_paths(os.environ.get("MEDIA_PATHS", "/media"))
 
+
+def _parse_category_map(raw: str) -> dict[str, str]:
+    """Parse 'folder:category,folder:category' into a lowercased dict."""
+    out: dict[str, str] = {}
+    for pair in raw.split(","):
+        pair = pair.strip()
+        if ":" in pair:
+            folder, category = pair.split(":", 1)
+            folder, category = folder.strip().lower(), category.strip().lower()
+            if folder and category:
+                out[folder] = category
+    return out
+
+
+# Maps a file's top-level subfolder (under its media root) to a category used by the
+# UI filter. Anything unmapped falls back to "other".
+CATEGORY_MAP: dict[str, str] = _parse_category_map(
+    os.environ.get("CATEGORY_MAP", "tv:tv,movies:movie,bellesa:adult")
+)
+
+
+def categorize(path: str) -> str:
+    """Classify a file by the first path segment beneath its matching media root."""
+    for root in MEDIA_PATHS:
+        root_norm = root.rstrip("/")
+        if path == root_norm or path.startswith(root_norm + "/"):
+            rel = path[len(root_norm):].lstrip("/")
+            segments = rel.split("/")
+            if len(segments) > 1:  # file lives inside a subfolder, not at the root
+                top = segments[0].lower()
+                return CATEGORY_MAP.get(top, "other")
+            return "other"
+    return "other"
+
 SCENE_THRESHOLD: float = float(os.environ.get("SCENE_THRESHOLD", "0.4"))
 MIN_SCENE_DURATION: int = int(os.environ.get("MIN_SCENE_DURATION", "120"))
 
