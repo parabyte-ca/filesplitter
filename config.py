@@ -35,25 +35,30 @@ def _parse_category_map(raw: str) -> dict[str, str]:
     return out
 
 
-# Maps a file's top-level subfolder (under its media root) to a category used by the
-# UI filter. Anything unmapped falls back to "other".
+# Optional override that groups scan-folder names into friendlier categories, e.g.
+# "bellesa:adult,maturemovies:adult,maturetv:adult,movies:movie,tv:tv". Empty by
+# default, so each scan folder is its own category (its lowercased basename).
 CATEGORY_MAP: dict[str, str] = _parse_category_map(
-    os.environ.get("CATEGORY_MAP", "tv:tv,movies:movie,bellesa:adult")
+    os.environ.get("CATEGORY_MAP", "")
 )
 
 
 def categorize(path: str) -> str:
-    """Classify a file by the first path segment beneath its matching media root."""
+    """
+    Classify a file by the scan-path root that contains it. Each scan path *is* a
+    category folder (e.g. /media/bellesa), so the category is that root's basename,
+    optionally remapped via CATEGORY_MAP. Returns "other" if no root matches.
+    """
+    best = None
     for root in MEDIA_PATHS:
         root_norm = root.rstrip("/")
         if path == root_norm or path.startswith(root_norm + "/"):
-            rel = path[len(root_norm):].lstrip("/")
-            segments = rel.split("/")
-            if len(segments) > 1:  # file lives inside a subfolder, not at the root
-                top = segments[0].lower()
-                return CATEGORY_MAP.get(top, "other")
-            return "other"
-    return "other"
+            if best is None or len(root_norm) > len(best):
+                best = root_norm  # longest matching root wins
+    if best is None:
+        return "other"
+    name = os.path.basename(best).lower()
+    return CATEGORY_MAP.get(name, name or "other")
 
 SCENE_THRESHOLD: float = float(os.environ.get("SCENE_THRESHOLD", "0.4"))
 MIN_SCENE_DURATION: int = int(os.environ.get("MIN_SCENE_DURATION", "120"))
