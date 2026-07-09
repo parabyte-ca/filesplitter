@@ -308,10 +308,6 @@
       </select>
       <select class="filter-select" id="filter-category">
         <option value="">All categories</option>
-        <option value="tv">TV</option>
-        <option value="movie">Movie</option>
-        <option value="adult">Adult</option>
-        <option value="other">Other</option>
       </select>
       <select class="filter-select" id="filter-codec">
         <option value="">All codecs</option>
@@ -854,6 +850,20 @@ function _refreshCodecFilter() {
   if (codecs.includes(current)) sel.value = current;
 }
 
+// Populate the category filter from the categories actually present (derived
+// server-side from each file's scan-folder name).
+function _titleCase(s) {
+  return s.replace(/\b\w/g, c => c.toUpperCase());
+}
+function _refreshCategoryFilter() {
+  const sel = document.getElementById('filter-category');
+  const current = sel.value;
+  const cats = [...new Set(allFiles.map(f => f.category).filter(Boolean))].sort();
+  sel.innerHTML = '<option value="">All categories</option>' +
+    cats.map(c => `<option value="${escHtml(c)}">${escHtml(_titleCase(c))}</option>`).join('');
+  if (cats.includes(current)) sel.value = current;
+}
+
 function renderFiles() {
   let rows = _getFilteredFiles();
 
@@ -960,6 +970,7 @@ async function loadFiles() {
   const r = await fetch('/api/files');
   allFiles = await r.json();
   _refreshCodecFilter();
+  _refreshCategoryFilter();
   renderFiles();
 }
 
