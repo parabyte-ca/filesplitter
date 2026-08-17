@@ -1001,7 +1001,7 @@ document.getElementById('modal-confirm').onclick = async () => {
 function trimStart(fileId) {
   const f = allFiles.find(x => x.id === fileId);
   if (!f) return;
-  if (!confirm(`Trim the first 3.1s off "${f.filename}"? This re-encodes and overwrites the original file.`)) return;
+  if (!confirm(`Trim the first 3.5s off "${f.filename}"? This re-encodes and overwrites the original file.`)) return;
   queueJob(fileId, 'trim');
 }
 
