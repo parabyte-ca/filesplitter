@@ -11,7 +11,7 @@ import encoder
 
 logger = logging.getLogger(__name__)
 
-TRIM_SECONDS: float = 3.1
+TRIM_SECONDS: float = 3.5
 DURATION_TOLERANCE_SEC: float = 2.0
 
 
