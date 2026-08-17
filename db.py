@@ -353,8 +353,9 @@ def get_recent_jobs(limit: int = 20) -> list[sqlite3.Row]:
 
 
 def update_file_size(file_id: int, size_bytes: int, codec: str = None,
-                     width: int = None, height: int = None) -> None:
-    """Update size (and optionally codec/width/height) after a transcode, bumping updated_at."""
+                     width: int = None, height: int = None,
+                     duration_sec: float = None) -> None:
+    """Update size (and optionally codec/width/height/duration) after a transcode, bumping updated_at."""
     sets = ["size_bytes=?"]
     params: list = [size_bytes]
     if codec:
@@ -366,6 +367,9 @@ def update_file_size(file_id: int, size_bytes: int, codec: str = None,
     if height is not None:
         sets.append("height=?")
         params.append(height)
+    if duration_sec is not None:
+        sets.append("duration_sec=?")
+        params.append(duration_sec)
     sets.append("updated_at=?")
     params.append(_now())
     params.append(file_id)

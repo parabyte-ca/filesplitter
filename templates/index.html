@@ -933,6 +933,7 @@ function renderFiles() {
         actions.push(`<button class="btn btn-sm" onclick="openEncodeModal(${f.id})">Transcode</button>`);
       }
       actions.push(`<button class="btn btn-sm" onclick="openSplitModal(${f.id})">Split</button>`);
+      actions.push(`<button class="btn btn-sm" onclick="trimStart(${f.id})">Trim start</button>`);
       if (f.status !== 'skipped' && f.status !== 'done') {
         const anthLabel = f.is_anthology ? '− Anthology' : '+ Anthology';
         actions.push(`<button class="btn btn-sm" onclick="toggleAnthology(${f.id}, ${!f.is_anthology})">${anthLabel}</button>`);
@@ -997,6 +998,13 @@ document.getElementById('modal-confirm').onclick = async () => {
 };
 
 // ---- Actions ----
+function trimStart(fileId) {
+  const f = allFiles.find(x => x.id === fileId);
+  if (!f) return;
+  if (!confirm(`Trim the first 3.1s off "${f.filename}"? This re-encodes and overwrites the original file.`)) return;
+  queueJob(fileId, 'trim');
+}
+
 async function queueJob(fileId, type, resolution, episodeCount) {
   resolution = resolution || document.getElementById('s-resolution')?.value || 'original';
   const r = await fetch('/api/queue', {
