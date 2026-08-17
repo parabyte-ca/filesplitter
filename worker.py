@@ -8,6 +8,7 @@ import config
 import db
 import encoder
 import splitter
+import trimmer
 
 
 def _fmt_bytes(n: int) -> str:
@@ -146,6 +147,33 @@ def _run_job(job: dict, cancel_event: threading.Event) -> None:
                     db.increment_saved_bytes(saved)
             else:
                 err = last_log[0][:300] if last_log[0] else "Encoding failed"
+                db.set_file_status(file_id, "error", err)
+                db.set_job_status(job_id, "error")
+
+        elif job_type == "trim":
+            out_probe = trimmer.trim_start(
+                input_path,
+                progress_cb=progress_cb,
+                cancel_event=cancel_event,
+            )
+            if cancel_event.is_set():
+                db.set_file_status(file_id, "pending")
+                db.set_job_status(job_id, "cancelled")
+                db.update_job_progress(job_id, 0, "Cancelled by user")
+            elif out_probe is not None:
+                new_bytes = os.path.getsize(input_path)
+                db.update_file_size(
+                    file_id, new_bytes,
+                    codec=out_probe.codec,
+                    width=out_probe.width,
+                    height=out_probe.height,
+                    duration_sec=out_probe.duration_sec,
+                )
+                db.set_file_status(file_id, "done")
+                db.set_job_status(job_id, "done")
+                db.update_job_progress(job_id, 100.0, f"Trimmed {trimmer.TRIM_SECONDS}s off start")
+            else:
+                err = last_log[0][:300] if last_log[0] else "Trimming failed"
                 db.set_file_status(file_id, "error", err)
                 db.set_job_status(job_id, "error")
 
