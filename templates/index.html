@@ -526,6 +526,56 @@
       </div>
 
       <div class="card" style="margin-top:24px">
+        <div class="section-title">Updates</div>
+
+        <div class="settings-grid" style="margin-top:12px">
+          <div class="form-group">
+            <label>GitHub Repo to Check</label>
+            <input type="text" id="s-app-source-url" style="width:100%" placeholder="https://github.com/owner/repo" />
+          </div>
+          <div class="form-group" style="display:flex;align-items:center;gap:8px;padding-top:22px">
+            <input type="checkbox" id="s-app-update-check" />
+            <label for="s-app-update-check" style="margin:0">Check daily for a newer release</label>
+          </div>
+        </div>
+
+        <div id="updates-status" role="status" aria-live="polite" style="margin-top:16px;border-top:1px solid var(--border);padding-top:16px">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <span style="font-size:13px;color:var(--muted)">Running version:</span>
+            <span id="upd-current-version" style="font-size:14px;font-weight:600">—</span>
+            <span id="upd-availability-badge" class="badge"></span>
+            <button class="btn btn-sm" id="btn-check-updates" style="margin-left:auto">Check now</button>
+          </div>
+          <div id="upd-checked-line" style="font-size:11px;color:var(--muted);margin-top:6px"></div>
+          <div id="upd-check-error" style="font-size:12px;color:var(--red);margin-top:4px;display:none"></div>
+
+          <div id="upd-helper-line" style="font-size:12px;margin-top:10px"></div>
+          <div id="upd-helper-install-hint" style="font-size:11px;color:var(--muted);margin-top:4px;display:none">
+            Run <code style="font-size:10px">scripts/upgrade-agent.sh --install</code> on the host to enable in-app upgrades
+            (or <code style="font-size:10px">--print</code> to get the config for your own scheduler).
+          </div>
+
+          <div id="upd-release-block" style="display:none;margin-top:14px">
+            <div style="font-size:13px;font-weight:600" id="upd-release-title"></div>
+            <pre id="upd-release-notes" aria-label="Release notes" style="white-space:pre-wrap;font-size:12px;color:var(--muted);max-height:220px;overflow:auto;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px;margin-top:8px"></pre>
+          </div>
+
+          <div style="margin-top:14px">
+            <button class="btn btn-primary" id="btn-upgrade-now" style="display:none">Upgrade now</button>
+            <span id="upd-upgrade-msg" style="margin-left:12px;font-size:12px"></span>
+          </div>
+          <div id="upd-waiting-warning" style="font-size:12px;color:var(--yellow);margin-top:8px;display:none">
+            Waiting for the upgrade helper to pick this up — it does not appear to be connected right now.
+          </div>
+
+          <details style="margin-top:12px">
+            <summary style="font-size:11px;cursor:pointer;color:var(--muted)">Upgrade log</summary>
+            <pre id="upd-log-tail" aria-label="Upgrade log" style="white-space:pre-wrap;font-size:11px;max-height:200px;overflow:auto;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px;margin-top:6px"></pre>
+          </details>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:24px">
         <div class="section-title">Space Saved Counter</div>
         <div style="font-size:12px;color:var(--muted);margin-bottom:12px">
           This counter persists across restarts and is not affected by Clear History.
@@ -1369,6 +1419,9 @@ async function loadSettings() {
   _updateSplitMethodUI(s.split_scene_method || 'combined');
 
   renderPaths(s.media_paths || []);
+
+  document.getElementById('s-app-source-url').value = s.app_source_url || '';
+  document.getElementById('s-app-update-check').checked = !!s.app_update_check;
 }
 
 function _updateSceneMethodUI(method) {
@@ -1453,6 +1506,8 @@ document.getElementById('btn-save-settings').onclick = async () => {
     split_black_min_duration: parseFloat(document.getElementById('s-split-black-min-dur').value),
     split_freeze_min_duration: parseFloat(document.getElementById('s-split-freeze-min-dur').value),
     split_episode_count: parseInt(document.getElementById('s-split-ep-count').value) || 0,
+    app_source_url: document.getElementById('s-app-source-url').value,
+    app_update_check: document.getElementById('s-app-update-check').checked,
   };
   const r = await fetch('/api/settings', {
     method: 'POST',
@@ -1468,6 +1523,116 @@ document.getElementById('btn-save-settings').onclick = async () => {
     msg.textContent = 'Error saving';
   }
 };
+
+// ---- Updates ----
+function _linkify(text) {
+  const escaped = escHtml(text);
+  return escaped.replace(/\bhttps:\/\/[^\s<>"]+\b/g, url =>
+    `<a href="${url}" target="_blank" rel="noopener">${url}</a>`);
+}
+
+function renderUpdatesPanel(s) {
+  document.getElementById('upd-current-version').textContent = s.current_version;
+
+  const badge = document.getElementById('upd-availability-badge');
+  if (s.update_available) {
+    badge.className = 'badge badge-queued';
+    badge.textContent = `Update available: ${s.latest.version}`;
+  } else {
+    badge.className = 'badge badge-done';
+    badge.textContent = 'Up to date';
+  }
+
+  document.getElementById('upd-checked-line').textContent =
+    s.checked_at ? `Last checked: ${fmtDate(s.checked_at)}` : 'Never checked';
+
+  const errEl = document.getElementById('upd-check-error');
+  if (s.check_error) {
+    errEl.style.display = '';
+    errEl.textContent = `Check failed: ${s.check_error}`;
+  } else {
+    errEl.style.display = 'none';
+  }
+
+  const helperLine = document.getElementById('upd-helper-line');
+  const helperHint = document.getElementById('upd-helper-install-hint');
+  if (s.helper.configured) {
+    helperLine.style.color = s.helper.connected ? 'var(--green)' : 'var(--red)';
+    helperLine.textContent = s.helper.connected
+      ? `Helper: connected (last seen ${fmtDate(s.helper.last_seen)}, every ${s.helper.every_minutes} min)`
+      : `Helper: not responding (last seen ${fmtDate(s.helper.last_seen)})`;
+    helperHint.style.display = s.helper.connected ? 'none' : '';
+  } else {
+    helperLine.style.color = 'var(--muted)';
+    helperLine.textContent = 'Helper: not configured';
+    helperHint.style.display = '';
+  }
+
+  const releaseBlock = document.getElementById('upd-release-block');
+  if (s.latest) {
+    releaseBlock.style.display = '';
+    document.getElementById('upd-release-title').innerHTML =
+      `<a href="${escHtml(s.latest.url)}" target="_blank" rel="noopener">${escHtml(s.latest.name || s.latest.version)}</a>`;
+    document.getElementById('upd-release-notes').innerHTML = _linkify(s.latest.notes || '');
+  } else {
+    releaseBlock.style.display = 'none';
+  }
+
+  const upgradeBtn = document.getElementById('btn-upgrade-now');
+  if (s.can_upgrade) {
+    upgradeBtn.style.display = '';
+    upgradeBtn.textContent = `Upgrade to ${s.latest.version}`;
+    upgradeBtn.onclick = () => upgradeNow(s.latest.version);
+  } else {
+    upgradeBtn.style.display = 'none';
+  }
+
+  document.getElementById('upd-waiting-warning').style.display =
+    (s.upgrade.state === 'requested' && !s.helper.connected) ? '' : 'none';
+
+  document.getElementById('upd-log-tail').textContent = s.log_tail || '';
+}
+
+let _updatesTimer = null;
+async function pollUpdates() {
+  try {
+    const r = await fetch('/api/updates');
+    if (r.ok) {
+      const s = await r.json();
+      renderUpdatesPanel(s);
+      clearTimeout(_updatesTimer);
+      const fast = s.upgrade && ['requested', 'running'].includes(s.upgrade.state);
+      _updatesTimer = setTimeout(pollUpdates, fast ? 3000 : 30000);
+      return;
+    }
+  } catch (e) { /* network hiccup — retry below */ }
+  clearTimeout(_updatesTimer);
+  _updatesTimer = setTimeout(pollUpdates, 30000);
+}
+
+document.getElementById('btn-check-updates').onclick = async () => {
+  await fetch('/api/updates/check', {method: 'POST'});
+  pollUpdates();
+};
+
+async function upgradeNow(version) {
+  if (!confirm(`Upgrade FileSplitter to ${version} now? This takes about a minute of downtime.`)) return;
+  const r = await fetch('/api/updates/upgrade', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({version}),
+  });
+  const body = await r.json();
+  const msg = document.getElementById('upd-upgrade-msg');
+  if (r.ok) {
+    msg.style.color = 'var(--green)';
+    msg.textContent = 'Upgrade requested — reload the page in about a minute.';
+  } else {
+    msg.style.color = 'var(--red)';
+    msg.textContent = body.msg || 'Could not request the upgrade.';
+  }
+  pollUpdates();
+}
 
 // ---- Tabs ----
 document.querySelectorAll('.tab').forEach(tab => {
@@ -1513,6 +1678,7 @@ document.getElementById('btn-clear-filters').onclick = () => {
 // ---- Init ----
 loadSettings();
 loadFiles();
+pollUpdates();
 setInterval(loadFiles, 10000);
 </script>
 <script>

@@ -33,9 +33,12 @@ echo "Installing version: $VERSION"
 echo ""
 
 # --- Preflight ---
-echo "[1/3] Creating persistent data directory..."
+echo "[1/3] Creating persistent data directories..."
 mkdir -p data
 echo "      ./data/ created (SQLite database will be stored here)"
+mkdir -p upgrade
+chmod 770 upgrade
+echo "      ./upgrade/ created (shared folder for in-app self-upgrades — see README 'Updates')"
 
 echo ""
 echo "[2/3] Building Docker image..."
