@@ -15,9 +15,10 @@ import config
 import db
 import scanner
 import trash
+import updates
 import worker
 
-_VERSION = (Path(__file__).parent / "VERSION").read_text().strip()
+_VERSION = config.VERSION
 
 logging.basicConfig(
     level=logging.INFO,
@@ -348,6 +349,79 @@ def api_queue():
     return jsonify({"ok": True, "job_id": job_id})
 
 
+def _build_updates_payload() -> dict:
+    cache = updates._load_cache()
+    latest = cache.get("latest")
+    helper = updates.get_agent_status()
+    upgrade_state = updates.get_upgrade_state()
+    update_available = updates.is_update_available(config.VERSION, cache)
+    can_upgrade = (
+        latest is not None
+        and update_available
+        and upgrade_state["state"] in ("idle", "succeeded", "failed")
+        and helper["connected"]
+    )
+    return {
+        "current_version": config.VERSION,
+        "latest": latest,
+        "update_available": update_available,
+        "checked_at": cache.get("checked_at"),
+        "check_error": cache.get("last_error"),
+        "helper": helper,
+        "upgrade": upgrade_state,
+        "can_upgrade": can_upgrade,
+        "log_tail": updates.read_log_tail(),
+    }
+
+
+@app.get("/api/updates")
+def api_get_updates():
+    return jsonify(_build_updates_payload())
+
+
+@app.post("/api/updates/check")
+def api_check_updates():
+    updates.check_for_update(force=False)
+    return jsonify(_build_updates_payload())
+
+
+@app.post("/api/updates/upgrade")
+def api_request_upgrade():
+    body = request.get_json(force=True) or {}
+    version = str(body.get("version") or "").strip()
+
+    cache = updates._load_cache()
+    latest = cache.get("latest")
+    if not latest or version != latest.get("version"):
+        return jsonify({"ok": False, "msg": "Requested version does not match the latest known release"}), 400
+
+    current = updates.parse_version(config.VERSION)
+    target = updates.parse_version(version)
+    if not target or not current or updates.compare_versions(target, current) <= 0:
+        return jsonify({"ok": False, "msg": "Requested version is not newer than the running version"}), 400
+
+    state = updates.get_upgrade_state()
+    if state["state"] in ("requested", "running"):
+        return jsonify({"ok": False, "msg": f"An upgrade is already {state['state']}"}), 409
+
+    helper = updates.get_agent_status()
+    if not helper["connected"]:
+        return jsonify({"ok": False, "msg": "Upgrade helper is not connected — cannot start an upgrade"}), 409
+
+    requested_by = request.remote_addr or "dashboard"
+    try:
+        req = updates.write_upgrade_request(version, requested_by)
+    except OSError as exc:
+        return jsonify({
+            "ok": False,
+            "msg": f"Could not write upgrade request ({exc}). "
+                   f"Run 'scripts/upgrade-agent.sh --install' on the host first.",
+        }), 500
+
+    logger.info("Upgrade requested: %s -> %s (by %s)", config.VERSION, version, requested_by)
+    return jsonify({"ok": True, "msg": "Upgrade requested", "request": req})
+
+
 @app.post("/api/skip/<int:file_id>")
 def api_skip(file_id: int):
     file_row = db.get_file(file_id)
@@ -447,6 +521,8 @@ def api_get_settings():
         "split_black_min_duration": config.SPLIT_BLACK_MIN_DURATION,
         "split_freeze_min_duration": config.SPLIT_FREEZE_MIN_DURATION,
         "split_episode_count": config.SPLIT_EPISODE_COUNT,
+        "app_source_url": config.APP_SOURCE_URL,
+        "app_update_check": config.APP_UPDATE_CHECK,
     })
 
 
@@ -468,6 +544,7 @@ def api_post_settings():
         "encoder_backend", "scene_method", "black_min_duration", "black_pix_th",
         "split_scene_method", "split_min_episode_gap", "split_black_min_duration",
         "split_freeze_min_duration", "split_episode_count", "split_keywords",
+        "app_source_url", "app_update_check",
     ]
     for key in updatable:
         if key in body:
@@ -475,6 +552,11 @@ def api_post_settings():
             db.set_setting(key, str(val))
             if key == "split_keywords":
                 config.SPLIT_KEYWORDS = [k.strip() for k in str(val).split(",") if k.strip()]
+            elif key == "app_update_check":
+                # bool is an int subclass in Python, so the generic isinstance(attr, int)
+                # branch below would try int("false") and silently drop the update —
+                # must special-case this before falling into the generic cast path.
+                config.APP_UPDATE_CHECK = str(val).strip().lower() in ("1", "true", "yes", "on")
             elif hasattr(config, key.upper()):
                 try:
                     attr = getattr(config, key.upper())
@@ -510,6 +592,8 @@ _SETTINGS_MAP: dict[str, tuple[str, type]] = {
     "split_black_min_duration":  ("SPLIT_BLACK_MIN_DURATION",  float),
     "split_freeze_min_duration": ("SPLIT_FREEZE_MIN_DURATION", float),
     "split_episode_count":       ("SPLIT_EPISODE_COUNT",       int),
+    "app_source_url":            ("APP_SOURCE_URL",            str),
+    "app_update_check":          ("APP_UPDATE_CHECK",          bool),
 }
 
 
@@ -521,6 +605,10 @@ def _reload_settings_from_db() -> None:
             try:
                 if attr == "SPLIT_KEYWORDS":
                     setattr(config, attr, [k.strip() for k in val.split(",") if k.strip()])
+                elif attr == "APP_UPDATE_CHECK":
+                    # bool(val) on a non-empty string is always True — must parse the
+                    # stored "true"/"false" text explicitly, not via the generic cast.
+                    setattr(config, attr, val.strip().lower() in ("1", "true", "yes", "on"))
                 else:
                     setattr(config, attr, cast(val))
             except (ValueError, TypeError):
@@ -543,5 +631,6 @@ if __name__ == "__main__":
     _reload_settings_from_db()
     worker.start()
     threading.Thread(target=_trash_cleanup_loop, daemon=True).start()
+    threading.Thread(target=updates.daily_check_loop, daemon=True).start()
     logger.info("FileSplitter running on port %d", config.FLASK_PORT)
     app.run(host="0.0.0.0", port=config.FLASK_PORT, threaded=True)

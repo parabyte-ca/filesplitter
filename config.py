@@ -1,5 +1,6 @@
 import os
 import socket
+from pathlib import Path
 
 
 def _find_free_port(preferred: int) -> int:
@@ -120,6 +121,19 @@ DASHBOARD_PASSWORD: str = os.environ.get("DASHBOARD_PASSWORD", "")
 # Override the auto-generated session secret key (stored in DB). Only needed if you
 # want sessions to survive a full database reset.
 FLASK_SECRET_KEY: str = os.environ.get("FLASK_SECRET_KEY", "")
+
+VERSION: str = (Path(__file__).parent / "VERSION").read_text().strip()
+
+# GitHub repo to check for new releases, as a plain https://github.com/<owner>/<repo> URL.
+APP_SOURCE_URL: str = os.environ.get("APP_SOURCE_URL", "https://github.com/parabyte-ca/filesplitter")
+
+# Set to "false" to disable the daily background check for a newer release entirely.
+APP_UPDATE_CHECK: bool = os.environ.get("APP_UPDATE_CHECK", "true").strip().lower() in ("1", "true", "yes", "on")
+
+# Path inside the container where the shared host upgrade folder is mounted (see
+# docker-compose.yml's ./upgrade:/upgrade volume). Used by the in-app upgrade feature
+# to exchange request/status files with scripts/upgrade-agent.sh running on the host.
+APP_UPGRADE_DIR: str = os.environ.get("APP_UPGRADE_DIR", "/upgrade")
 
 _preferred_port = int(os.environ.get("FLASK_PORT", "4250"))
 FLASK_PORT: int = _find_free_port(_preferred_port)

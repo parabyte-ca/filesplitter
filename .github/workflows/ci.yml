@@ -17,7 +17,19 @@ jobs:
           python-version: "3.11"
 
       - name: Syntax check
-        run: python -m py_compile app.py db.py worker.py encoder.py trimmer.py splitter.py scanner.py codec_detector.py scene_detector.py scene_namer.py config.py
+        run: python -m py_compile app.py db.py worker.py encoder.py trimmer.py splitter.py scanner.py codec_detector.py scene_detector.py scene_namer.py trash.py updates.py config.py
+
+      - name: Install test dependencies
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Run tests
+        run: pytest -q
+
+      - name: Shellcheck
+        run: shellcheck install.sh update.sh scripts/upgrade-agent.sh
+
+      - name: Bash test harness
+        run: sudo bash tests/bash/test_upgrade_agent.sh
 
       - name: Build Docker image
         run: docker build --build-arg VERSION=ci-test -t filesplitter:ci .

@@ -14,6 +14,10 @@ services:
       #
       # Persistent data (SQLite database)
       - ./data:/app/data
+      #
+      # Shared folder for in-app self-upgrades — scripts/upgrade-agent.sh reads/writes
+      # here; see README "Updates"
+      - ./upgrade:/upgrade
     environment:
       # Comma-separated list of paths inside the container to scan
       MEDIA_PATHS: /media/bellesa
@@ -56,6 +60,14 @@ services:
       # Dashboard password — required when accessing from non-LAN IPs (e.g. Cloudflare Tunnel).
       # Direct LAN access (192.168.x.x, 10.x.x.x, 172.16-31.x.x) is always unrestricted.
       # DASHBOARD_PASSWORD: ""
+
+      # --- Self-update checking ---
+      # GitHub repo to check for new releases
+      APP_SOURCE_URL: "https://github.com/parabyte-ca/filesplitter"
+      # Set to "false" to disable the daily release check entirely
+      APP_UPDATE_CHECK: "true"
+      # Path inside the container where ./upgrade is mounted (see volume above)
+      APP_UPGRADE_DIR: "/upgrade"
 
       # --- NVIDIA GPU (NVENC) encoding ---
       # Uncomment ENCODER_BACKEND below and the deploy block to enable GPU encoding.
