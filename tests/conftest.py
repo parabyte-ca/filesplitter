@@ -37,3 +37,14 @@ def tmp_upgrade_dir(tmp_path, monkeypatch):
     upgrade_dir.mkdir()
     monkeypatch.setattr(config, "APP_UPGRADE_DIR", str(upgrade_dir))
     return str(upgrade_dir)
+
+
+@pytest.fixture
+def tmp_media_roots(tmp_path, monkeypatch):
+    """Two fresh, empty media roots for a single test (MEDIA_PATHS supports more than one)."""
+    root1 = tmp_path / "media1"
+    root2 = tmp_path / "media2"
+    root1.mkdir()
+    root2.mkdir()
+    monkeypatch.setattr(config, "MEDIA_PATHS", [str(root1), str(root2)])
+    return [str(root1), str(root2)]

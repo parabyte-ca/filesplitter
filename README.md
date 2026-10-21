@@ -1,6 +1,6 @@
 # FileSplitter
 
-**Version 1.1.0**
+**Version 1.2.0**
 
 A self-hosted Docker service for TrueNAS (or any Linux host) that automatically indexes your media library, re-encodes video files to x265, and splits multi-scene anthology files at scene boundaries.
 
@@ -16,6 +16,7 @@ A self-hosted Docker service for TrueNAS (or any Linux host) that automatically 
 - **Persistent state** — SQLite database with WAL mode survives restarts with no data loss
 - **Docker-first** — single `docker compose up -d --build` deploys everything on port 4250
 - **In-app updates** — checks its own GitHub repo daily for a newer release and can self-upgrade from the dashboard via an optional host helper script
+- **Trash with one-click empty** — deleted files move to a `.trash` folder and auto-purge after 30 days, or empty immediately from the Settings tab
 
 ---
 
@@ -180,12 +181,15 @@ Then run `./update.sh`.
 
 The SQLite database is stored at `./data/filesplitter.db` on the host (mounted into the container). Backups are as simple as copying that file.
 
+Deleted files are moved to a `.trash` folder inside each media path (not removed from disk), and are purged automatically after 30 days. The Settings tab's **Trash** card shows how much space is currently in `.trash` and has an **Empty Trash** button to purge everything immediately instead of waiting.
+
 ---
 
 ## Revision History
 
 | Version | Date | Notes |
 |---|---|---|
+| **1.2.0** | 2026-10-21 | Trash card in Settings: shows current `.trash` size/file count across all media paths and adds an Empty Trash button to purge everything immediately (`trash.empty_trash()`), independent of the existing 30-day automatic cleanup |
 | **1.1.0** | 2026-10-16 | In-app update checking and self-upgrade: Settings tab shows when a newer GitHub release is available with its release notes; a daily background check (`APP_SOURCE_URL`, `APP_UPDATE_CHECK`); one-button upgrade writes a request to a shared `./upgrade` folder for a new root-owned host helper (`scripts/upgrade-agent.sh`) to pick up and run — the app container never gets Docker or root access; `update.sh` now backs up the database, pre-flight-tests the new image against a copy of it, and automatically rolls back on a failed health check |
 | **1.0.0** | 2026-06-07 | Allow re-encoding HEVC files at a different resolution — HEVC files now show a Transcode button to upscale or downscale via the encode modal |
 | **0.9.9** | 2026-05-29 | Comprehensive hardening: queue loop now survives DB exceptions; `duration_sec==0` guard prevents corrupt split boundaries and original deletion; encoder cancel fires immediately (watcher thread) not just while ffmpeg produces stdout; proc always reaped on exception; UI settings persist across container restarts; auth now uses RFC-1918 LAN IP check instead of spoofable CF header; login uses `hmac.compare_digest` + 1s delay; session cookie gets `SameSite=Lax`; `get_json` null guard; SSE `onerror` indicator and keepalive comments; `.dockerignore` added; resource limits + log rotation in compose; `update.sh` stashes local edits before `git pull`; non-root user in Dockerfile; ffprobe timeout configurable; README defaults corrected; GitHub Actions CI added |

@@ -596,6 +596,20 @@
           <span id="saved-msg" style="margin-left:4px;font-size:12px;color:var(--green);align-self:center"></span>
         </div>
       </div>
+
+      <div class="card" style="margin-top:24px">
+        <div class="section-title">Trash</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:12px">
+          Deleted files are moved to a .trash folder in each media path and purged automatically
+          after 30 days. Empty Trash deletes everything immediately instead of waiting.
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+          <span style="font-size:13px;color:var(--muted)">Currently in trash:</span>
+          <span id="trash-size-display" style="font-size:15px;font-weight:600">—</span>
+        </div>
+        <button class="btn" id="btn-empty-trash" style="color:var(--red);border-color:var(--red)">Empty Trash</button>
+        <span id="trash-msg" style="margin-left:8px;font-size:12px"></span>
+      </div>
     </div>
   </div>
 
@@ -1487,6 +1501,28 @@ document.getElementById('btn-reset-saved').onclick = () => {
   if (confirm('Reset Space Saved counter to 0?')) _setSavedBytes(0);
 };
 
+async function loadTrashStats() {
+  const r = await fetch('/api/trash');
+  const s = await r.json();
+  document.getElementById('trash-size-display').textContent =
+    s.file_count > 0 ? `${fmtSize(s.size_bytes)} across ${s.file_count} file${s.file_count !== 1 ? 's' : ''}` : 'Empty';
+}
+
+document.getElementById('btn-empty-trash').onclick = async () => {
+  if (!confirm('Permanently delete everything in .trash now? This deletes files immediately, not just items older than 30 days, and cannot be undone.')) return;
+  const r = await fetch('/api/trash/empty', {method: 'POST'});
+  const data = await r.json();
+  const msg = document.getElementById('trash-msg');
+  if (r.ok) {
+    msg.style.color = 'var(--green)';
+    msg.textContent = `Freed ${fmtSize(data.freed_bytes)} (${data.removed_files} file${data.removed_files !== 1 ? 's' : ''}).`;
+  } else {
+    msg.style.color = 'var(--red)';
+    msg.textContent = 'Error';
+  }
+  loadTrashStats();
+};
+
 document.getElementById('btn-save-settings').onclick = async () => {
   const body = {
     encoder_backend: document.getElementById('s-backend').value,
@@ -1642,6 +1678,7 @@ document.querySelectorAll('.tab').forEach(tab => {
     tab.classList.add('active');
     document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
     if (tab.dataset.tab === 'jobs') loadJobHistory();
+    if (tab.dataset.tab === 'settings') loadTrashStats();
   };
 });
 
@@ -1679,6 +1716,7 @@ document.getElementById('btn-clear-filters').onclick = () => {
 loadSettings();
 loadFiles();
 pollUpdates();
+loadTrashStats();
 setInterval(loadFiles, 10000);
 </script>
 <script>
