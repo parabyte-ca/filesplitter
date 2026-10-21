@@ -473,6 +473,17 @@ def api_purge_missing():
     return jsonify({"ok": True, "removed": count})
 
 
+@app.get("/api/trash")
+def api_trash_stats():
+    return jsonify(trash.trash_stats())
+
+
+@app.post("/api/trash/empty")
+def api_empty_trash():
+    stats = trash.empty_trash()
+    return jsonify({"ok": True, "freed_bytes": stats["size_bytes"], "removed_files": stats["file_count"]})
+
+
 @app.post("/api/jobs/clear")
 def api_clear_jobs():
     count = db.clear_finished_jobs()

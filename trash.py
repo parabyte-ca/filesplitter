@@ -51,6 +51,47 @@ def move_to_trash(path: str) -> str:
     return dest
 
 
+def trash_stats() -> dict:
+    """Sum size and count of everything currently sitting in every media root's .trash."""
+    size_bytes = 0
+    file_count = 0
+    for root in config.MEDIA_PATHS:
+        trash_dir = os.path.join(root.rstrip("/"), TRASH_DIRNAME)
+        if not os.path.isdir(trash_dir):
+            continue
+        for dirpath, _dirnames, filenames in os.walk(trash_dir):
+            for name in filenames:
+                try:
+                    size_bytes += os.path.getsize(os.path.join(dirpath, name))
+                    file_count += 1
+                except OSError:
+                    pass  # vanished mid-walk — don't let one file break the count
+    return {"size_bytes": size_bytes, "file_count": file_count}
+
+
+def empty_trash() -> dict:
+    """
+    Permanently delete everything in every media root's .trash, regardless of age.
+    Returns the size/count that was freed (computed before deletion).
+    """
+    stats = trash_stats()
+    for root in config.MEDIA_PATHS:
+        trash_dir = os.path.join(root.rstrip("/"), TRASH_DIRNAME)
+        if not os.path.isdir(trash_dir):
+            continue
+        for name in os.listdir(trash_dir):
+            entry = os.path.join(trash_dir, name)
+            try:
+                if os.path.isdir(entry) and not os.path.islink(entry):
+                    shutil.rmtree(entry)
+                else:
+                    os.remove(entry)
+            except OSError as exc:
+                logger.error("Could not remove trash entry %s: %s", entry, exc)
+    logger.info("Emptied trash: freed %d bytes across %d files", stats["size_bytes"], stats["file_count"])
+    return stats
+
+
 def cleanup_trash(max_age_days: int = 30) -> int:
     """
     Delete .trash/<date> folders older than max_age_days across all media roots.
