@@ -1,6 +1,6 @@
 # FileSplitter
 
-**Version 1.2.0**
+**Version 1.2.1**
 
 A self-hosted Docker service for TrueNAS (or any Linux host) that automatically indexes your media library, re-encodes video files to x265, and splits multi-scene anthology files at scene boundaries.
 
@@ -148,6 +148,7 @@ All settings are environment variables in `docker-compose.yml`. The dashboard Se
 | `X265_PRESET` | `medium` | Encoding speed preset (CPU: ultrafast→veryslow; NVENC: fast/medium/slow/hq/hp) |
 | `TARGET_RESOLUTION` | `original` | Output resolution: `original`, `1080p`, `720p`, etc. |
 | `MAX_WORKERS` | `2` | Simultaneous ffmpeg jobs |
+| `FFPROBE_TIMEOUT` | `60` | Seconds to wait for ffprobe before giving up on a file (also adjustable from Settings → ffprobe Timeout) |
 | `APP_SOURCE_URL` | `https://github.com/parabyte-ca/filesplitter` | GitHub repo checked for new releases — see **Updates** above |
 | `APP_UPDATE_CHECK` | `true` | Set to `false` to disable the daily release check |
 | `APP_UPGRADE_DIR` | `/upgrade` | Container path where the shared `./upgrade` folder is mounted — do not change without also changing the volume mount |
@@ -189,6 +190,7 @@ Deleted files are moved to a `.trash` folder inside each media path (not removed
 
 | Version | Date | Notes |
 |---|---|---|
+| **1.2.1** | 2026-10-24 | Fix silent job failures: jobs that failed before ffmpeg even started (an unreadable/corrupt file) wrote nothing to the Jobs History log — `codec_detector.probe_with_error()` now surfaces ffprobe's actual reason (uses `-v error` instead of `-v quiet` so stderr isn't empty), every failure path in encoder/splitter/trimmer reports it, and `worker.py` now guarantees both the file's error message and the job's log are always populated on any failure. Also adds a Settings → ffprobe Timeout field, since a tight 60s default was a plausible cause for large files on a slow NAS |
 | **1.2.0** | 2026-10-21 | Trash card in Settings: shows current `.trash` size/file count across all media paths and adds an Empty Trash button to purge everything immediately (`trash.empty_trash()`), independent of the existing 30-day automatic cleanup |
 | **1.1.0** | 2026-10-16 | In-app update checking and self-upgrade: Settings tab shows when a newer GitHub release is available with its release notes; a daily background check (`APP_SOURCE_URL`, `APP_UPDATE_CHECK`); one-button upgrade writes a request to a shared `./upgrade` folder for a new root-owned host helper (`scripts/upgrade-agent.sh`) to pick up and run — the app container never gets Docker or root access; `update.sh` now backs up the database, pre-flight-tests the new image against a copy of it, and automatically rolls back on a failed health check |
 | **1.0.0** | 2026-06-07 | Allow re-encoding HEVC files at a different resolution — HEVC files now show a Transcode button to upscale or downscale via the encode modal |

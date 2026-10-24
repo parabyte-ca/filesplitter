@@ -438,6 +438,13 @@
           <select id="s-resolution" class="filter-select" style="width:100%"></select>
         </div>
         <div class="form-group">
+          <label>ffprobe Timeout (seconds)</label>
+          <input type="number" id="s-ffprobe-timeout" min="5" />
+          <div style="font-size:11px;color:var(--muted);margin-top:3px">
+            Raise this if jobs fail with "ffprobe timed out" — large files on a slow or busy NAS may need more than the default 60s to read.
+          </div>
+        </div>
+        <div class="form-group">
           <label id="s-crf-label">CRF — libx265 quality (18=high · 28=good · 35=smaller)</label>
           <input type="number" id="s-crf" min="0" max="51" />
         </div>
@@ -1407,6 +1414,8 @@ async function loadSettings() {
   document.getElementById('modal-resolution').innerHTML = opts;
   document.getElementById('bulk-resolution').innerHTML = opts;
 
+  document.getElementById('s-ffprobe-timeout').value = s.ffprobe_timeout ?? 60;
+
   // Encoder backend
   const backend = s.encoder_backend || 'cpu';
   document.getElementById('s-backend').value = backend;
@@ -1527,6 +1536,7 @@ document.getElementById('btn-save-settings').onclick = async () => {
   const body = {
     encoder_backend: document.getElementById('s-backend').value,
     target_resolution: document.getElementById('s-resolution').value,
+    ffprobe_timeout: parseInt(document.getElementById('s-ffprobe-timeout').value) || 60,
     x265_crf: parseInt(document.getElementById('s-crf').value),
     x265_preset: document.getElementById('s-preset').value,
     scene_method: document.getElementById('s-scene-method').value,

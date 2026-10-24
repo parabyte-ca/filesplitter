@@ -53,9 +53,9 @@ def scan_all() -> dict:
                         skipped += 1
                         continue
 
-                    info = codec_detector.probe(full_path)
+                    info, probe_err = codec_detector.probe_with_error(full_path)
                     if info is None:
-                        logger.warning("ffprobe failed: %s", full_path)
+                        logger.warning("Could not read %s: %s", full_path, probe_err)
                         errors += 1
                         continue
 

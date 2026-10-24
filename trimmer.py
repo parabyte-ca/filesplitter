@@ -26,15 +26,21 @@ def trim_start(
     original on success. Returns the output file's ProbeResult on success, or None
     on failure or cancellation.
     """
-    probe = codec_detector.probe(input_path)
+    probe, probe_err = codec_detector.probe_with_error(input_path)
     if probe is None:
-        logger.error("Cannot probe %s", input_path)
+        err_msg = f"Cannot read video info: {probe_err}"
+        logger.error("%s: %s", err_msg, input_path)
+        if progress_cb:
+            progress_cb(0, f"ERROR: {err_msg}")
         return None
     if probe.duration_sec <= seconds:
-        logger.error(
-            "%s is only %.1fs, cannot trim %.1fs off the start",
-            input_path, probe.duration_sec, seconds,
+        err_msg = (
+            f"File is only {probe.duration_sec:.1f}s long, "
+            f"cannot trim {seconds:.1f}s off the start"
         )
+        logger.error("%s: %s", err_msg, input_path)
+        if progress_cb:
+            progress_cb(0, f"ERROR: {err_msg}")
         return None
 
     ext = os.path.splitext(input_path)[1]

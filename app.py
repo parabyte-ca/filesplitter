@@ -518,6 +518,7 @@ def api_get_settings():
         "x265_preset": config.X265_PRESET,
         "target_resolution": config.TARGET_RESOLUTION,
         "max_workers": config.MAX_WORKERS,
+        "ffprobe_timeout": config.FFPROBE_TIMEOUT,
         "resolutions": ["original"] + list(config.RESOLUTION_MAP.keys()),
         "flask_port": config.FLASK_PORT,
         "encoder_backend": config.ENCODER_BACKEND,
@@ -555,7 +556,7 @@ def api_post_settings():
         "encoder_backend", "scene_method", "black_min_duration", "black_pix_th",
         "split_scene_method", "split_min_episode_gap", "split_black_min_duration",
         "split_freeze_min_duration", "split_episode_count", "split_keywords",
-        "app_source_url", "app_update_check",
+        "app_source_url", "app_update_check", "ffprobe_timeout",
     ]
     for key in updatable:
         if key in body:
@@ -593,6 +594,7 @@ _SETTINGS_MAP: dict[str, tuple[str, type]] = {
     "target_resolution":  ("TARGET_RESOLUTION",   str),
     "encoder_backend":    ("ENCODER_BACKEND",     str),
     "max_workers":        ("MAX_WORKERS",         int),
+    "ffprobe_timeout":    ("FFPROBE_TIMEOUT",     int),
     "black_min_duration": ("BLACK_MIN_DURATION",  float),
     "black_pix_th":       ("BLACK_PIX_TH",        float),
     "split_min_duration":        ("SPLIT_MIN_DURATION",        int),

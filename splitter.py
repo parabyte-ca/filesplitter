@@ -39,9 +39,12 @@ def split_by_scenes(
     On success, verifies all output files, deletes original, returns list of output paths.
     Returns None on failure or cancellation (check cancel_event.is_set() to distinguish).
     """
-    probe = codec_detector.probe(input_path)
+    probe, probe_err = codec_detector.probe_with_error(input_path)
     if probe is None:
-        logger.error("Cannot probe %s", input_path)
+        err_msg = f"Cannot read video info: {probe_err}"
+        logger.error("%s: %s", err_msg, input_path)
+        if progress_cb:
+            progress_cb(0, f"ERROR: {err_msg}")
         return None
 
     if progress_cb:

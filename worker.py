@@ -87,9 +87,19 @@ def _run_job(job: dict, cancel_event: threading.Event) -> None:
     target_res = job.get("target_resolution", "original")
     episode_count = job.get("episode_count") or 0
 
+    def _fail(msg: str, pct: float = 0) -> None:
+        # Always write the failure reason to both the file (Files tab) and the job
+        # (Jobs/History tab's "Show log"), regardless of whether progress_cb already
+        # reported it — so the log is never silently empty for a failed job.
+        db.set_file_status(file_id, "error", msg)
+        db.update_job_progress(job_id, pct, msg)
+        db.set_job_status(job_id, "error")
+
     file_row = db.get_file(file_id)
     if file_row is None:
-        logger.error("Job %d: file %d not found", job_id, file_id)
+        msg = f"File record {file_id} no longer exists"
+        logger.error("Job %d: %s", job_id, msg)
+        db.update_job_progress(job_id, 0, msg)
         db.set_job_status(job_id, "error")
         _cancel_events.pop(job_id, None)
         return
@@ -146,9 +156,8 @@ def _run_job(job: dict, cancel_event: threading.Event) -> None:
                 if saved > 0:
                     db.increment_saved_bytes(saved)
             else:
-                err = last_log[0][:300] if last_log[0] else "Encoding failed"
-                db.set_file_status(file_id, "error", err)
-                db.set_job_status(job_id, "error")
+                err = last_log[0][:300] if last_log[0] else "Encoding failed (no further details available)"
+                _fail(err)
 
         elif job_type == "trim":
             out_probe = trimmer.trim_start(
@@ -173,9 +182,8 @@ def _run_job(job: dict, cancel_event: threading.Event) -> None:
                 db.set_job_status(job_id, "done")
                 db.update_job_progress(job_id, 100.0, f"Trimmed {trimmer.TRIM_SECONDS}s off start")
             else:
-                err = last_log[0][:300] if last_log[0] else "Trimming failed"
-                db.set_file_status(file_id, "error", err)
-                db.set_job_status(job_id, "error")
+                err = last_log[0][:300] if last_log[0] else "Trimming failed (no further details available)"
+                _fail(err)
 
         elif job_type == "split":
             scenes = splitter.split_by_scenes(
@@ -194,16 +202,15 @@ def _run_job(job: dict, cancel_event: threading.Event) -> None:
                 db.update_job_progress(job_id, 100.0, f"{len(scenes)} scenes created")
             else:
                 err = last_log[0][:300] if last_log[0] else "Splitting failed or no scenes found"
-                db.set_file_status(file_id, "error", err)
-                db.set_job_status(job_id, "error")
+                _fail(err)
 
         else:
-            logger.error("Unknown job type: %s", job_type)
-            db.set_job_status(job_id, "error")
+            msg = f"Unknown job type: {job_type}"
+            logger.error(msg)
+            _fail(msg)
 
     except Exception as exc:
         logger.exception("Job %d failed: %s", job_id, exc)
-        db.set_file_status(file_id, "error", str(exc)[:300])
-        db.set_job_status(job_id, "error")
+        _fail(f"Unexpected error: {exc}"[:300])
     finally:
         _cancel_events.pop(job_id, None)
