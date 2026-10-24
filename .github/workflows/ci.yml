@@ -19,6 +19,9 @@ jobs:
       - name: Syntax check
         run: python -m py_compile app.py db.py worker.py encoder.py trimmer.py splitter.py scanner.py codec_detector.py scene_detector.py scene_namer.py trash.py updates.py config.py
 
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
       - name: Install test dependencies
         run: pip install -r requirements.txt -r requirements-dev.txt
 

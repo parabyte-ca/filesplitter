@@ -69,9 +69,12 @@ def encode_to_x265(
 
     backend = config.ENCODER_BACKEND
 
-    probe = codec_detector.probe(input_path)
+    probe, probe_err = codec_detector.probe_with_error(input_path)
     if probe is None:
-        logger.error("Cannot probe %s", input_path)
+        err_msg = f"Cannot read video info: {probe_err}"
+        logger.error("%s: %s", err_msg, input_path)
+        if progress_cb:
+            progress_cb(0, f"ERROR: {err_msg}")
         return None
 
     ext = os.path.splitext(input_path)[1]
