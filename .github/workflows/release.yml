@@ -43,6 +43,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           subject=$(git log -1 --format=%s)
+          if [[ "$subject" =~ ^Merge\ pull\ request\ \#[0-9]+ ]]; then
+            subject=$(git log -1 --format=%b | sed -n '/./p' | head -1)
+          fi
           gh release create "${{ steps.version.outputs.version }}" \
             --title "v${{ steps.version.outputs.version }} — ${subject}" \
             --generate-notes
