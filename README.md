@@ -1,6 +1,6 @@
 # FileSplitter
 
-**Version 1.2.2**
+**Version 1.2.3**
 
 A self-hosted Docker service for TrueNAS (or any Linux host) that automatically indexes your media library, re-encodes video files to x265, and splits multi-scene anthology files at scene boundaries.
 
@@ -193,6 +193,7 @@ Deleted files are moved to a `.trash` folder inside each media path (not removed
 
 | Version | Date | Notes |
 |---|---|---|
+| **1.2.3** | 2026-10-25 | Fix `./update.sh` failing with "You are not currently on a branch" on a plain update (no `--version`): the in-app Upgrade button always checks out a release tag, leaving the repo in detached HEAD, and a bare `git pull` has no tracking branch there. The default update path now explicitly re-attaches to the default branch before pulling |
 | **1.2.2** | 2026-10-25 | Fix GPU detection sometimes reverting to CPU encoding after a container restart: `encoder.py`'s NVENC check now actually attempts a real encode instead of only checking that ffmpeg was compiled with NVENC support (which is always true regardless of hardware), and retries for up to `NVENC_PROBE_MAX_WAIT` seconds (default 30s) when a GPU is configured but the driver is still initializing right after a host reboot — with zero added delay for installs without a GPU configured. Healthcheck `start_period` raised to 60s to accommodate the worst case |
 | **1.2.1** | 2026-10-24 | Fix silent job failures: jobs that failed before ffmpeg even started (an unreadable/corrupt file) wrote nothing to the Jobs History log — `codec_detector.probe_with_error()` now surfaces ffprobe's actual reason (uses `-v error` instead of `-v quiet` so stderr isn't empty), every failure path in encoder/splitter/trimmer reports it, and `worker.py` now guarantees both the file's error message and the job's log are always populated on any failure. Also adds a Settings → ffprobe Timeout field, since a tight 60s default was a plausible cause for large files on a slow NAS |
 | **1.2.0** | 2026-10-21 | Trash card in Settings: shows current `.trash` size/file count across all media paths and adds an Empty Trash button to purge everything immediately (`trash.empty_trash()`), independent of the existing 30-day automatic cleanup |

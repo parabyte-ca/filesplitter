@@ -145,10 +145,17 @@ elif [[ -n "$TARGET_VERSION" ]]; then
 else
     echo ""
     echo "[2/8] Pulling latest code..."
-    # Stash any local edits (e.g. docker-compose.yml volume/env customisations) so
-    # git pull can succeed, then restore them afterwards.
+    # A prior `--version X.Y.Z` run (the only thing the in-app Upgrade button ever does,
+    # via scripts/upgrade-agent.sh) checks out a tag, leaving the repo in detached HEAD —
+    # a bare `git pull` has no tracking branch to use there, so re-attach to the default
+    # branch first. Stash any local edits (e.g. docker-compose.yml customisations) before
+    # the checkout, so they don't block it, then restore them afterwards.
+    DEFAULT_BRANCH="$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null)" || true
+    DEFAULT_BRANCH="${DEFAULT_BRANCH#origin/}"
+    DEFAULT_BRANCH="${DEFAULT_BRANCH:-main}"
     git stash --include-untracked --quiet || true
-    git pull
+    git checkout --quiet "$DEFAULT_BRANCH"
+    git pull --quiet origin "$DEFAULT_BRANCH"
     git stash pop --quiet || true  # restore local edits (merge conflicts are left for the user)
 fi
 
