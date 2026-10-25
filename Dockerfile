@@ -20,7 +20,7 @@ LABEL org.opencontainers.image.title="FileSplitter" \
 
 EXPOSE 4250
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:4250/api/version')" || exit 1
 
 CMD ["python", "app.py"]

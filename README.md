@@ -1,6 +1,6 @@
 # FileSplitter
 
-**Version 1.2.1**
+**Version 1.2.2**
 
 A self-hosted Docker service for TrueNAS (or any Linux host) that automatically indexes your media library, re-encodes video files to x265, and splits multi-scene anthology files at scene boundaries.
 
@@ -128,6 +128,8 @@ If your TrueNAS server has an NVIDIA GPU, you can use hardware-accelerated HEVC 
 
 The Settings tab will show the available NVENC presets and update the quality label to **CQ** (equivalent scale to CRF, same 0–51 range). If NVENC is unavailable at runtime, jobs fall back to CPU automatically with a log warning.
 
+**GPU detection at startup**: the container actually attempts a real NVENC encode at boot to confirm the GPU is usable, rather than just checking that ffmpeg supports it. If a GPU is configured (`/dev/nvidia*` devices present) but the driver is still initializing right after a host reboot, the container retries every 5 seconds for up to `NVENC_PROBE_MAX_WAIT` seconds (default 30s) before giving up for that run — you'll see `"GPU device present but hevc_nvenc probe failed — driver may still be initializing"` in the logs during this window, which is expected and not an error. Installs without a GPU configured see no added startup delay.
+
 ---
 
 ## Configuration
@@ -144,6 +146,7 @@ All settings are environment variables in `docker-compose.yml`. The dashboard Se
 | `SPLIT_MIN_SIZE` | `2147483648` | Flag as anthology if size ≥ this (bytes, default 2 GB) |
 | `SPLIT_KEYWORDS` | `Vol,Compilation,…` | Filename keywords that trigger anthology classification |
 | `ENCODER_BACKEND` | `cpu` | `cpu` (libx265) or `nvenc` (GPU HEVC — see GPU section above) |
+| `NVENC_PROBE_MAX_WAIT` | `30` | Seconds to keep retrying the GPU probe at startup when a GPU is configured but not yet ready (see GPU section above) |
 | `X265_CRF` | `28` | x265 CRF / NVENC CQ quality (18=high, 28=good, 35=small) |
 | `X265_PRESET` | `medium` | Encoding speed preset (CPU: ultrafast→veryslow; NVENC: fast/medium/slow/hq/hp) |
 | `TARGET_RESOLUTION` | `original` | Output resolution: `original`, `1080p`, `720p`, etc. |
@@ -190,6 +193,7 @@ Deleted files are moved to a `.trash` folder inside each media path (not removed
 
 | Version | Date | Notes |
 |---|---|---|
+| **1.2.2** | 2026-10-25 | Fix GPU detection sometimes reverting to CPU encoding after a container restart: `encoder.py`'s NVENC check now actually attempts a real encode instead of only checking that ffmpeg was compiled with NVENC support (which is always true regardless of hardware), and retries for up to `NVENC_PROBE_MAX_WAIT` seconds (default 30s) when a GPU is configured but the driver is still initializing right after a host reboot — with zero added delay for installs without a GPU configured. Healthcheck `start_period` raised to 60s to accommodate the worst case |
 | **1.2.1** | 2026-10-24 | Fix silent job failures: jobs that failed before ffmpeg even started (an unreadable/corrupt file) wrote nothing to the Jobs History log — `codec_detector.probe_with_error()` now surfaces ffprobe's actual reason (uses `-v error` instead of `-v quiet` so stderr isn't empty), every failure path in encoder/splitter/trimmer reports it, and `worker.py` now guarantees both the file's error message and the job's log are always populated on any failure. Also adds a Settings → ffprobe Timeout field, since a tight 60s default was a plausible cause for large files on a slow NAS |
 | **1.2.0** | 2026-10-21 | Trash card in Settings: shows current `.trash` size/file count across all media paths and adds an Empty Trash button to purge everything immediately (`trash.empty_trash()`), independent of the existing 30-day automatic cleanup |
 | **1.1.0** | 2026-10-16 | In-app update checking and self-upgrade: Settings tab shows when a newer GitHub release is available with its release notes; a daily background check (`APP_SOURCE_URL`, `APP_UPDATE_CHECK`); one-button upgrade writes a request to a shared `./upgrade` folder for a new root-owned host helper (`scripts/upgrade-agent.sh`) to pick up and run — the app container never gets Docker or root access; `update.sh` now backs up the database, pre-flight-tests the new image against a copy of it, and automatically rolls back on a failed health check |
