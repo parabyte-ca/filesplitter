@@ -1,5 +1,7 @@
+import glob
 import os
 import subprocess
+import time
 import uuid
 import logging
 import threading
@@ -10,16 +12,59 @@ import codec_detector
 
 logger = logging.getLogger(__name__)
 
-# Checked once at startup; no cost at runtime.
-def _nvenc_available() -> bool:
+_NVENC_PROBE_RETRY_SECS = 5
+
+
+def _nvenc_probe_once() -> bool:
+    """Actually attempt a tiny real hevc_nvenc encode. This is the only way to tell
+    whether the GPU/driver is truly usable — `ffmpeg -encoders` lists hevc_nvenc as
+    soon as it was compiled in, regardless of whether a GPU is even present, since
+    NVENC support is dlopen'd at encode time rather than linked at build time."""
     try:
         r = subprocess.run(
-            ["ffmpeg", "-encoders"],
+            [
+                "ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=black:s=64x64:d=0.1",
+                "-c:v", "hevc_nvenc", "-frames:v", "1", "-f", "null", "-",
+            ],
             capture_output=True, text=True, timeout=10,
         )
-        return "hevc_nvenc" in r.stdout
-    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return r.returncode == 0
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
         return False
+
+
+def _nvenc_available() -> bool:
+    """Checked once at startup; no cost at runtime.
+
+    A GPU passed through via docker-compose.yml's `deploy.reservations` block shows up
+    as /dev/nvidia* device files the instant the container is created, but the NVIDIA
+    driver on the host can still be mid-initialization right after a reboot, so the
+    very first real encode attempt can transiently fail. Only retry when a GPU was
+    actually configured for this container — non-GPU installs see no added delay.
+    """
+    if _nvenc_probe_once():
+        return True
+
+    if not glob.glob("/dev/nvidia*"):
+        return False  # no GPU configured for this container at all
+
+    deadline = time.monotonic() + config.NVENC_PROBE_MAX_WAIT
+    while time.monotonic() < deadline:
+        logger.warning(
+            "GPU device present but hevc_nvenc probe failed — driver may still be "
+            "initializing, retrying in %ds", _NVENC_PROBE_RETRY_SECS,
+        )
+        time.sleep(_NVENC_PROBE_RETRY_SECS)
+        if _nvenc_probe_once():
+            logger.info("hevc_nvenc became available after retry")
+            return True
+
+    logger.warning(
+        "hevc_nvenc still unavailable after %ds — falling back to CPU",
+        config.NVENC_PROBE_MAX_WAIT,
+    )
+    return False
+
 
 NVENC_AVAILABLE: bool = _nvenc_available()
 
