@@ -425,8 +425,9 @@
               <option value="nvenc">GPU (NVENC · hevc_nvenc)</option>
             </select>
           </div>
-          <div style="padding-top:18px">
+          <div style="padding-top:18px;display:flex;align-items:center;gap:8px">
             <span id="gpu-badge" class="badge" style="font-size:12px"></span>
+            <button class="btn btn-sm" id="btn-recheck-gpu" style="display:none">Recheck GPU</button>
           </div>
         </div>
         <div id="nvenc-tip" style="display:none;font-size:11px;color:var(--yellow);margin-top:6px">
@@ -1391,6 +1392,7 @@ function _updateEncoderUI(backend) {
   const badge = document.getElementById('gpu-badge');
   const nvencTip = document.getElementById('nvenc-tip');
   const nvencOkTip = document.getElementById('nvenc-ok-tip');
+  const recheckBtn = document.getElementById('btn-recheck-gpu');
   if (isNvenc) {
     if (_nvencAvailable) {
       badge.className = 'badge badge-done'; badge.textContent = 'GPU detected ✓';
@@ -1399,11 +1401,28 @@ function _updateEncoderUI(backend) {
       badge.className = 'badge badge-error'; badge.textContent = 'GPU not found ✗';
       nvencTip.style.display = 'block'; nvencOkTip.style.display = 'none';
     }
+    recheckBtn.style.display = 'inline-block';
   } else {
     badge.className = ''; badge.textContent = '';
     nvencTip.style.display = 'none'; nvencOkTip.style.display = 'none';
+    recheckBtn.style.display = 'none';
   }
 }
+
+document.getElementById('btn-recheck-gpu').onclick = async () => {
+  const btn = document.getElementById('btn-recheck-gpu');
+  btn.disabled = true;
+  btn.textContent = 'Checking…';
+  try {
+    const r = await fetch('/api/encoder/recheck-gpu', { method: 'POST' });
+    const s = await r.json();
+    _nvencAvailable = s.nvenc_available || false;
+    _updateEncoderUI(document.getElementById('s-backend').value);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Recheck GPU';
+  }
+};
 
 async function loadSettings() {
   const r = await fetch('/api/settings');

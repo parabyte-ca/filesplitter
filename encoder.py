@@ -13,6 +13,7 @@ import codec_detector
 logger = logging.getLogger(__name__)
 
 _NVENC_PROBE_RETRY_SECS = 5
+_NVENC_BACKGROUND_RETRY_SECS = 300
 
 
 def _nvenc_probe_once() -> bool:
@@ -60,10 +61,34 @@ def _nvenc_available() -> bool:
             return True
 
     logger.warning(
-        "hevc_nvenc still unavailable after %ds — falling back to CPU",
-        config.NVENC_PROBE_MAX_WAIT,
+        "hevc_nvenc still unavailable after %ds — falling back to CPU for now; will "
+        "keep checking every %ds in the background, or use Settings → Recheck GPU",
+        config.NVENC_PROBE_MAX_WAIT, _NVENC_BACKGROUND_RETRY_SECS,
     )
+    threading.Thread(target=_background_retry_loop, daemon=True).start()
     return False
+
+
+def _background_retry_loop() -> None:
+    """Keeps checking every few minutes after the boot-time probe gave up, so a GPU
+    whose driver took longer than NVENC_PROBE_MAX_WAIT to come up still gets picked
+    up on its own — no container restart required. Stops once it succeeds."""
+    while True:
+        time.sleep(_NVENC_BACKGROUND_RETRY_SECS)
+        if recheck_nvenc():
+            logger.info("hevc_nvenc became available via background retry")
+            return
+
+
+def recheck_nvenc() -> bool:
+    """Re-run a single NVENC probe on demand (the Settings → "Recheck GPU" button)
+    and update the live availability flag. Unlike the boot-time check, this doesn't
+    loop/retry internally — the caller can just invoke it again if the driver still
+    isn't ready, rather than this call blocking for up to NVENC_PROBE_MAX_WAIT seconds.
+    """
+    global NVENC_AVAILABLE
+    NVENC_AVAILABLE = _nvenc_probe_once()
+    return NVENC_AVAILABLE
 
 
 NVENC_AVAILABLE: bool = _nvenc_available()

@@ -538,6 +538,12 @@ def api_get_settings():
     })
 
 
+@app.post("/api/encoder/recheck-gpu")
+def api_recheck_gpu():
+    import encoder as _enc
+    return jsonify({"nvenc_available": _enc.recheck_nvenc()})
+
+
 @app.post("/api/settings/saved-bytes")
 def api_set_saved_bytes():
     body = request.get_json(force=True) or {}
