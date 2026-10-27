@@ -37,5 +37,8 @@ jobs:
       - name: Bash test harness (update.sh git pull)
         run: bash tests/bash/test_update_git_pull.sh
 
+      - name: Bash test harness (update.sh --version checkout)
+        run: bash tests/bash/test_update_version_checkout.sh
+
       - name: Build Docker image
         run: docker build --build-arg VERSION=ci-test -t filesplitter:ci .

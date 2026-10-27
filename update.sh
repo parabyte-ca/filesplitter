@@ -135,8 +135,14 @@ if [[ "$NO_GIT" -eq 1 ]]; then
 elif [[ -n "$TARGET_VERSION" ]]; then
     echo ""
     echo "[2/8] Fetching tags and checking out v$TARGET_VERSION..."
+    # Stash any local edits (e.g. docker-compose.yml customisations, such as the GPU
+    # deploy block) before the checkout, so they don't block it — this is the only
+    # thing the in-app Upgrade button ever runs, so without this every upgrade would
+    # fail for any install with local docker-compose.yml changes. Restore them after.
     git fetch --tags --quiet
+    git stash --include-untracked --quiet || true
     git checkout --quiet "v$TARGET_VERSION" 2>/dev/null || git checkout --quiet "$TARGET_VERSION"
+    git stash pop --quiet || true  # merge conflicts (rare) are left for the user
     CHECKED_OUT_VERSION="$(cat VERSION 2>/dev/null || echo 'unknown')"
     if [[ "$CHECKED_OUT_VERSION" != "$TARGET_VERSION" ]]; then
         echo "ERROR: checked out ref does not contain a matching VERSION file ($CHECKED_OUT_VERSION != $TARGET_VERSION)." >&2
