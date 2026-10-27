@@ -90,7 +90,7 @@ ENCODER_BACKEND: str = os.environ.get("ENCODER_BACKEND", "cpu")
 
 # Max seconds to keep retrying the GPU encode probe at startup when a GPU is configured
 # but not yet ready (e.g. driver still initializing right after a host reboot).
-NVENC_PROBE_MAX_WAIT: int = int(os.environ.get("NVENC_PROBE_MAX_WAIT", "30"))
+NVENC_PROBE_MAX_WAIT: int = int(os.environ.get("NVENC_PROBE_MAX_WAIT", "120"))
 
 # original | 480p | 720p | 1080p | 1440p | 2160p
 TARGET_RESOLUTION: str = os.environ.get("TARGET_RESOLUTION", "original")
