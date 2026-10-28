@@ -523,6 +523,7 @@ def api_get_settings():
         "flask_port": config.FLASK_PORT,
         "encoder_backend": config.ENCODER_BACKEND,
         "nvenc_available": _enc.NVENC_AVAILABLE,
+        "nvenc_last_error": _enc.LAST_NVENC_ERROR,
         "cpu_presets": _enc._CPU_PRESETS,
         "nvenc_presets": _enc._NVENC_PRESETS,
         "scene_method": config.SCENE_METHOD,
@@ -541,7 +542,8 @@ def api_get_settings():
 @app.post("/api/encoder/recheck-gpu")
 def api_recheck_gpu():
     import encoder as _enc
-    return jsonify({"nvenc_available": _enc.recheck_nvenc()})
+    available = _enc.recheck_nvenc()
+    return jsonify({"nvenc_available": available, "nvenc_last_error": _enc.LAST_NVENC_ERROR})
 
 
 @app.post("/api/settings/saved-bytes")

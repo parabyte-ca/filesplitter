@@ -433,6 +433,7 @@
         <div id="nvenc-tip" style="display:none;font-size:11px;color:var(--yellow);margin-top:6px">
           NVENC not detected — jobs will automatically fall back to CPU. Check that the GPU is passed through in docker-compose.yml.
         </div>
+        <div id="nvenc-error" style="display:none;font-size:11px;color:var(--red);margin-top:4px;font-family:monospace"></div>
         <div id="nvenc-ok-tip" style="display:none;font-size:11px;color:var(--green);margin-top:6px">
           GPU detected. NVENC is 5–10× faster than CPU. Recommended CQ: 22–24 (equivalent to libx265 CRF 28).
         </div>
@@ -1375,6 +1376,7 @@ document.getElementById('btn-queue-all-split').onclick = async (e) => {
 let _cpuPresets = ['ultrafast','superfast','veryfast','faster','fast','medium','slow','slower','veryslow'];
 let _nvencPresets = ['fast','medium','slow','hq','hp'];
 let _nvencAvailable = false;
+let _nvencLastError = null;
 
 function _updateEncoderUI(backend) {
   const isNvenc = backend === 'nvenc';
@@ -1391,20 +1393,29 @@ function _updateEncoderUI(backend) {
 
   const badge = document.getElementById('gpu-badge');
   const nvencTip = document.getElementById('nvenc-tip');
+  const nvencError = document.getElementById('nvenc-error');
   const nvencOkTip = document.getElementById('nvenc-ok-tip');
   const recheckBtn = document.getElementById('btn-recheck-gpu');
   if (isNvenc) {
     if (_nvencAvailable) {
       badge.className = 'badge badge-done'; badge.textContent = 'GPU detected ✓';
       nvencTip.style.display = 'none'; nvencOkTip.style.display = 'block';
+      nvencError.style.display = 'none';
     } else {
       badge.className = 'badge badge-error'; badge.textContent = 'GPU not found ✗';
       nvencTip.style.display = 'block'; nvencOkTip.style.display = 'none';
+      if (_nvencLastError) {
+        nvencError.textContent = _nvencLastError;
+        nvencError.style.display = 'block';
+      } else {
+        nvencError.style.display = 'none';
+      }
     }
     recheckBtn.style.display = 'inline-block';
   } else {
     badge.className = ''; badge.textContent = '';
     nvencTip.style.display = 'none'; nvencOkTip.style.display = 'none';
+    nvencError.style.display = 'none';
     recheckBtn.style.display = 'none';
   }
 }
@@ -1417,6 +1428,7 @@ document.getElementById('btn-recheck-gpu').onclick = async () => {
     const r = await fetch('/api/encoder/recheck-gpu', { method: 'POST' });
     const s = await r.json();
     _nvencAvailable = s.nvenc_available || false;
+    _nvencLastError = s.nvenc_last_error || null;
     _updateEncoderUI(document.getElementById('s-backend').value);
   } finally {
     btn.disabled = false;
@@ -1429,6 +1441,7 @@ async function loadSettings() {
   const s = await r.json();
   resolutions = s.resolutions || ['original'];
   _nvencAvailable = s.nvenc_available || false;
+  _nvencLastError = s.nvenc_last_error || null;
   if (s.cpu_presets) _cpuPresets = s.cpu_presets;
   if (s.nvenc_presets) _nvencPresets = s.nvenc_presets;
 
