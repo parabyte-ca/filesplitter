@@ -18,6 +18,16 @@ NO_GIT=0
 SKIP_PREFLIGHT=0
 ROLLBACK_REV=""
 
+# Budget for the production container's own health check after a (re)deploy. Must
+# comfortably exceed encoder.py's NVENC_PROBE_MAX_WAIT (default 120s) plus normal
+# Flask/DB startup overhead — a GPU install whose driver is slow to initialize can
+# otherwise look "unhealthy" and trigger an unnecessary rollback of an upgrade that
+# would have come up fine given more time. Matches the Dockerfile/docker-compose.yml
+# HEALTHCHECK start_period (150s) with a bit of margin. Not used for the pre-flight
+# scratch container (docker run, no --gpus) which never faces this delay.
+HEALTHCHECK_TRIES=36
+HEALTHCHECK_DELAY=5
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --version) TARGET_VERSION="$2"; shift 2 ;;
@@ -83,7 +93,7 @@ if [[ -n "$ROLLBACK_REV" ]]; then
     echo "Rebuilding (version $RB_VERSION)..."
     VERSION="$RB_VERSION" $DC build
     VERSION="$RB_VERSION" $DC up -d
-    if _wait_healthy "http://localhost:4250/api/version" 12 5; then
+    if _wait_healthy "http://localhost:4250/api/version" "$HEALTHCHECK_TRIES" "$HEALTHCHECK_DELAY"; then
         echo "=== Rolled back to $ROLLBACK_REV (version $RB_VERSION) ==="
     else
         echo "ERROR: service did not become healthy after rollback — manual intervention required." >&2
@@ -212,7 +222,7 @@ VERSION="$NEW_VERSION" $DC up -d
 # [6/8] Real health check.
 echo ""
 echo "[6/8] Waiting for health check..."
-if _wait_healthy "http://localhost:4250/api/version" 12 5; then
+if _wait_healthy "http://localhost:4250/api/version" "$HEALTHCHECK_TRIES" "$HEALTHCHECK_DELAY"; then
     echo "      Service is up."
 else
     # [7/8] Automatic rollback.
@@ -237,7 +247,7 @@ else
         $DC start filesplitter
     fi
 
-    if ! _wait_healthy "http://localhost:4250/api/version" 12 5; then
+    if ! _wait_healthy "http://localhost:4250/api/version" "$HEALTHCHECK_TRIES" "$HEALTHCHECK_DELAY"; then
         echo "ERROR: rollback also failed to become healthy — manual intervention required." >&2
     fi
 

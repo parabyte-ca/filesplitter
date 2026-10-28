@@ -1,6 +1,6 @@
 # FileSplitter
 
-**Version 1.2.6**
+**Version 1.2.7**
 
 A self-hosted Docker service for TrueNAS (or any Linux host) that automatically indexes your media library, re-encodes video files to x265, and splits multi-scene anthology files at scene boundaries.
 
@@ -195,6 +195,7 @@ Deleted files are moved to a `.trash` folder inside each media path (not removed
 
 | Version | Date | Notes |
 |---|---|---|
+| **1.2.7** | 2026-10-28 | Fix a self-inflicted regression from 1.2.5: `update.sh`'s own post-deploy health check only waited 60s before declaring the new container unhealthy and rolling back — but 1.2.5 raised the GPU probe's boot-time window to up to 120s, so a GPU install whose driver needed the full retry window would have a perfectly good upgrade rolled back just for taking "too long" to report healthy. `update.sh`'s health-check budget is now 180s, matching the Dockerfile/docker-compose.yml `HEALTHCHECK start_period` with margin |
 | **1.2.6** | 2026-10-27 | Fix in-app upgrades failing for any install with local `docker-compose.yml` edits (e.g. the GPU deploy block): `update.sh`'s `--version X.Y.Z` path — the only thing the in-app Upgrade button ever runs — never stashed local changes before `git checkout`, so it would refuse to run and the upgrade would fail every time. Now stashes before the checkout and restores after, matching the plain `./update.sh` path's existing behavior |
 | **1.2.5** | 2026-10-27 | GPU detection could still get stuck on CPU past the 1.2.2 fix if a slow driver took longer than its 30s boot-time retry window. Raises `NVENC_PROBE_MAX_WAIT` default to 120s, adds a background retry every 5 minutes after boot gives up (self-heals without a restart), and adds a **Recheck GPU** button in Settings for an immediate on-demand check |
 | **1.2.4** | 2026-10-26 | Fix wasted vertical space in Settings → Updates on mobile: the "Check daily for a newer release" checkbox had a `padding-top` meant to align it with the input beside it in the desktop 2-column layout, but that padding still applied after the grid collapses to 1 column on narrow screens, leaving a large empty gap above it. Now scoped to the desktop breakpoint only |
