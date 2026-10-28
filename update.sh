@@ -82,13 +82,19 @@ _image_name() {
 # touches the database backup; going backwards against a possibly-forward-migrated
 # DB is a judgment call left to the operator. ---
 if [[ -n "$ROLLBACK_REV" ]]; then
-    echo "=== FileSplitter Manual Rollback ==="
-    echo "Target revision : $ROLLBACK_REV"
-    if [[ -t 0 ]]; then
-        read -r -p "This checks out '$ROLLBACK_REV', rebuilds, and redeploys. Continue? [y/N] " confirm
-        [[ "$confirm" =~ ^[Yy]$ ]] || { echo "Aborted."; exit 1; }
+    if [[ -z "${_UPDATE_SH_RESUME:-}" ]]; then
+        echo "=== FileSplitter Manual Rollback ==="
+        echo "Target revision : $ROLLBACK_REV"
+        if [[ -t 0 ]]; then
+            read -r -p "This checks out '$ROLLBACK_REV', rebuilds, and redeploys. Continue? [y/N] " confirm
+            [[ "$confirm" =~ ^[Yy]$ ]] || { echo "Aborted."; exit 1; }
+        fi
+        git checkout --quiet "$ROLLBACK_REV"
+        # Same reasoning as the main flow: the checkout above just rewrote this file
+        # on disk. Re-exec a fresh process so the just-checked-out revision's own
+        # code — not stale buffered content — runs the rebuild/deploy/health-check.
+        exec env _UPDATE_SH_RESUME=1 "$SCRIPT_DIR/update.sh" --rollback-rev "$ROLLBACK_REV"
     fi
-    git checkout --quiet "$ROLLBACK_REV"
     RB_VERSION="$(cat VERSION 2>/dev/null || echo 'unknown')"
     echo "Rebuilding (version $RB_VERSION)..."
     VERSION="$RB_VERSION" $DC build
@@ -102,77 +108,117 @@ if [[ -n "$ROLLBACK_REV" ]]; then
     exit 0
 fi
 
-PREV_VERSION="$(cat VERSION 2>/dev/null || echo 'unknown')"
-PREV_GIT_REV="$(git rev-parse HEAD 2>/dev/null || echo '')"
-echo "=== FileSplitter Updater ==="
-echo "Current version : $PREV_VERSION"
-echo ""
+if [[ -n "${_UPDATE_SH_RESUME:-}" ]]; then
+    # Resumed via the re-exec below, right after a git step rewrote this very file on
+    # disk. Steps 1-2 already ran (in the process that re-exec'd us); just restore
+    # their results and fall through to step 3.
+    PREV_VERSION="$_UPDATE_SH_PREV_VERSION"
+    PREV_GIT_REV="$_UPDATE_SH_PREV_GIT_REV"
+    BACKUP_FILE="$_UPDATE_SH_BACKUP_FILE"
+    IMAGE="$_UPDATE_SH_IMAGE"
+    # This process's own $NO_GIT is always 1 here (the resume always passes
+    # --no-git, since the git step is already done) — that must NOT be confused
+    # with the user's actual original intent when the automatic rollback below
+    # decides whether it's allowed to `git checkout` back to $PREV_GIT_REV. Resuming
+    # at all only ever happens after a real git step ran, so the original intent was
+    # always "git enabled".
+    ORIGINAL_NO_GIT=0
+else
+    ORIGINAL_NO_GIT="$NO_GIT"
+    PREV_VERSION="$(cat VERSION 2>/dev/null || echo 'unknown')"
+    PREV_GIT_REV="$(git rev-parse HEAD 2>/dev/null || echo '')"
+    echo "=== FileSplitter Updater ==="
+    echo "Current version : $PREV_VERSION"
+    echo ""
 
-IMAGE="$(_image_name)"
+    IMAGE="$(_image_name)"
 
-# [1/8] Snapshot: retag the running image (best-effort, for a fast rollback) and
-# back up the database through the still-running old container, so it's guaranteed
-# to have Python's sqlite3 available even on hosts without one installed.
-echo "[1/8] Snapshotting current state..."
-CURRENT_CID="$($DC ps -q filesplitter 2>/dev/null || true)"
-if [[ -n "$CURRENT_CID" ]]; then
-    CURRENT_IMAGE_ID="$(docker inspect -f '{{.Image}}' "$CURRENT_CID" 2>/dev/null || true)"
-    if [[ -n "$CURRENT_IMAGE_ID" ]]; then
-        docker tag "$CURRENT_IMAGE_ID" "filesplitter:rollback-${PREV_VERSION}" 2>/dev/null \
-            || echo "      WARNING: could not retag current image for fast rollback."
+    # [1/8] Snapshot: retag the running image (best-effort, for a fast rollback) and
+    # back up the database through the still-running old container, so it's guaranteed
+    # to have Python's sqlite3 available even on hosts without one installed.
+    echo "[1/8] Snapshotting current state..."
+    CURRENT_CID="$($DC ps -q filesplitter 2>/dev/null || true)"
+    if [[ -n "$CURRENT_CID" ]]; then
+        CURRENT_IMAGE_ID="$(docker inspect -f '{{.Image}}' "$CURRENT_CID" 2>/dev/null || true)"
+        if [[ -n "$CURRENT_IMAGE_ID" ]]; then
+            docker tag "$CURRENT_IMAGE_ID" "filesplitter:rollback-${PREV_VERSION}" 2>/dev/null \
+                || echo "      WARNING: could not retag current image for fast rollback."
+        fi
     fi
-fi
 
-BACKUP_FILE="filesplitter.db.bak-$(date +%Y%m%d%H%M%S)"
-if [[ -n "$CURRENT_CID" ]]; then
-    $DC exec -T filesplitter python3 - <<PYEOF || echo "      WARNING: database backup failed."
+    BACKUP_FILE="filesplitter.db.bak-$(date +%Y%m%d%H%M%S)"
+    if [[ -n "$CURRENT_CID" ]]; then
+        $DC exec -T filesplitter python3 - <<PYEOF || echo "      WARNING: database backup failed."
 import sqlite3
 sqlite3.connect("/app/data/filesplitter.db").execute("VACUUM INTO '/app/data/$BACKUP_FILE'")
 PYEOF
-    echo "      Backed up to ./data/$BACKUP_FILE"
-else
-    echo "      WARNING: service not running — skipping database backup."
-    BACKUP_FILE=""
-fi
-# Keep the 5 most recent backups.
-find ./data -maxdepth 1 -name 'filesplitter.db.bak-*' -printf '%T@ %p\n' 2>/dev/null \
-    | sort -rn | awk 'NR>5{print $2}' | xargs -r rm -f
-
-# [2/8] Git step.
-if [[ "$NO_GIT" -eq 1 ]]; then
-    echo ""
-    echo "[2/8] --no-git passed, skipping."
-elif [[ -n "$TARGET_VERSION" ]]; then
-    echo ""
-    echo "[2/8] Fetching tags and checking out v$TARGET_VERSION..."
-    # Stash any local edits (e.g. docker-compose.yml customisations, such as the GPU
-    # deploy block) before the checkout, so they don't block it — this is the only
-    # thing the in-app Upgrade button ever runs, so without this every upgrade would
-    # fail for any install with local docker-compose.yml changes. Restore them after.
-    git fetch --tags --quiet
-    git stash --include-untracked --quiet || true
-    git checkout --quiet "v$TARGET_VERSION" 2>/dev/null || git checkout --quiet "$TARGET_VERSION"
-    git stash pop --quiet || true  # merge conflicts (rare) are left for the user
-    CHECKED_OUT_VERSION="$(cat VERSION 2>/dev/null || echo 'unknown')"
-    if [[ "$CHECKED_OUT_VERSION" != "$TARGET_VERSION" ]]; then
-        echo "ERROR: checked out ref does not contain a matching VERSION file ($CHECKED_OUT_VERSION != $TARGET_VERSION)." >&2
-        exit 1
+        echo "      Backed up to ./data/$BACKUP_FILE"
+    else
+        echo "      WARNING: service not running — skipping database backup."
+        BACKUP_FILE=""
     fi
-else
-    echo ""
-    echo "[2/8] Pulling latest code..."
-    # A prior `--version X.Y.Z` run (the only thing the in-app Upgrade button ever does,
-    # via scripts/upgrade-agent.sh) checks out a tag, leaving the repo in detached HEAD —
-    # a bare `git pull` has no tracking branch to use there, so re-attach to the default
-    # branch first. Stash any local edits (e.g. docker-compose.yml customisations) before
-    # the checkout, so they don't block it, then restore them afterwards.
-    DEFAULT_BRANCH="$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null)" || true
-    DEFAULT_BRANCH="${DEFAULT_BRANCH#origin/}"
-    DEFAULT_BRANCH="${DEFAULT_BRANCH:-main}"
-    git stash --include-untracked --quiet || true
-    git checkout --quiet "$DEFAULT_BRANCH"
-    git pull --quiet origin "$DEFAULT_BRANCH"
-    git stash pop --quiet || true  # restore local edits (merge conflicts are left for the user)
+    # Keep the 5 most recent backups.
+    find ./data -maxdepth 1 -name 'filesplitter.db.bak-*' -printf '%T@ %p\n' 2>/dev/null \
+        | sort -rn | awk 'NR>5{print $2}' | xargs -r rm -f
+
+    # [2/8] Git step.
+    if [[ "$NO_GIT" -eq 1 ]]; then
+        echo ""
+        echo "[2/8] --no-git passed, skipping."
+    else
+        if [[ -n "$TARGET_VERSION" ]]; then
+            echo ""
+            echo "[2/8] Fetching tags and checking out v$TARGET_VERSION..."
+            # Stash any local edits (e.g. docker-compose.yml customisations, such as the GPU
+            # deploy block) before the checkout, so they don't block it — this is the only
+            # thing the in-app Upgrade button ever runs, so without this every upgrade would
+            # fail for any install with local docker-compose.yml changes. Restore them after.
+            git fetch --tags --quiet
+            git stash --include-untracked --quiet || true
+            git checkout --quiet "v$TARGET_VERSION" 2>/dev/null || git checkout --quiet "$TARGET_VERSION"
+            git stash pop --quiet || true  # merge conflicts (rare) are left for the user
+            CHECKED_OUT_VERSION="$(cat VERSION 2>/dev/null || echo 'unknown')"
+            if [[ "$CHECKED_OUT_VERSION" != "$TARGET_VERSION" ]]; then
+                echo "ERROR: checked out ref does not contain a matching VERSION file ($CHECKED_OUT_VERSION != $TARGET_VERSION)." >&2
+                exit 1
+            fi
+        else
+            echo ""
+            echo "[2/8] Pulling latest code..."
+            # A prior `--version X.Y.Z` run (the only thing the in-app Upgrade button ever does,
+            # via scripts/upgrade-agent.sh) checks out a tag, leaving the repo in detached HEAD —
+            # a bare `git pull` has no tracking branch to use there, so re-attach to the default
+            # branch first. Stash any local edits (e.g. docker-compose.yml customisations) before
+            # the checkout, so they don't block it, then restore them afterwards.
+            DEFAULT_BRANCH="$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null)" || true
+            DEFAULT_BRANCH="${DEFAULT_BRANCH#origin/}"
+            DEFAULT_BRANCH="${DEFAULT_BRANCH:-main}"
+            git stash --include-untracked --quiet || true
+            git checkout --quiet "$DEFAULT_BRANCH"
+            git pull --quiet origin "$DEFAULT_BRANCH"
+            git stash pop --quiet || true  # restore local edits (merge conflicts are left for the user)
+        fi
+
+        # The git step above just rewrote this very file on disk. A bash process
+        # reading a script file isn't guaranteed to see that change for the rest of
+        # its *own* run — depending on how much it had already buffered, the steps
+        # below could keep running the *old*, pre-upgrade code (so a fix shipped in
+        # the new version's update.sh would never take effect for the very upgrade
+        # that installs it), or worse, get corrupted mid-read if the file changed out
+        # from under it while still being parsed (reproduced directly: an external
+        # rewrite mid-script can crash bash with a syntax error). Re-exec a fresh
+        # process for everything from here on, so it's guaranteed to read the
+        # just-checked-out file cleanly, start to finish.
+        RESUME_ARGS=(--no-git)
+        [[ "$SKIP_PREFLIGHT" -eq 1 ]] && RESUME_ARGS+=(--skip-preflight)
+        exec env \
+            _UPDATE_SH_RESUME=1 \
+            _UPDATE_SH_PREV_VERSION="$PREV_VERSION" \
+            _UPDATE_SH_PREV_GIT_REV="$PREV_GIT_REV" \
+            _UPDATE_SH_BACKUP_FILE="$BACKUP_FILE" \
+            _UPDATE_SH_IMAGE="$IMAGE" \
+            "$SCRIPT_DIR/update.sh" "${RESUME_ARGS[@]}"
+    fi
 fi
 
 NEW_VERSION="$(cat VERSION 2>/dev/null || echo 'unknown')"
@@ -233,7 +279,11 @@ else
         VERSION="$PREV_VERSION" $DC up -d
     else
         echo "      No retagged image available — rebuilding from git history instead."
-        if [[ "$NO_GIT" -eq 0 && -n "$PREV_GIT_REV" ]]; then
+        # This rare fallback (the retag normally succeeds for any running install) has
+        # the same self-rewrite exposure as the main git step, without a clean resume
+        # point to re-exec into mid-rollback. Accepted as residual risk rather than
+        # adding a third resume mode to an already-intricate recovery path.
+        if [[ "$ORIGINAL_NO_GIT" -eq 0 && -n "$PREV_GIT_REV" ]]; then
             git checkout --quiet "$PREV_GIT_REV"
         fi
         VERSION="$PREV_VERSION" $DC build
