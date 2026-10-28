@@ -3,9 +3,9 @@ import subprocess
 import encoder
 
 
-def _fake_run(returncode: int):
+def _fake_run(returncode: int, stderr: str = ""):
     def run(*a, **k):
-        return subprocess.CompletedProcess(args=a, returncode=returncode)
+        return subprocess.CompletedProcess(args=a, returncode=returncode, stderr=stderr)
     return run
 
 
@@ -36,7 +36,7 @@ def test_nvenc_available_retries_and_recovers(monkeypatch):
 
     def run(*a, **k):
         attempts["n"] += 1
-        return subprocess.CompletedProcess(args=a, returncode=0 if attempts["n"] >= 2 else 1)
+        return subprocess.CompletedProcess(args=a, returncode=0 if attempts["n"] >= 2 else 1, stderr="")
     monkeypatch.setattr(encoder.subprocess, "run", run)
 
     sleeps = []
@@ -99,6 +99,44 @@ def test_recheck_nvenc_updates_live_flag(monkeypatch):
     monkeypatch.setattr(encoder.subprocess, "run", _fake_run(1))
     assert encoder.recheck_nvenc() is False
     assert encoder.NVENC_AVAILABLE is False
+
+
+def test_nvenc_probe_once_captures_ffmpeg_stderr_on_failure(monkeypatch):
+    monkeypatch.setattr(
+        encoder.subprocess, "run",
+        _fake_run(1, stderr="line one\n[hevc_nvenc] Cannot load libnvidia-encode.so.1\n"),
+    )
+    assert encoder._nvenc_probe_once() is False
+    assert encoder.LAST_NVENC_ERROR == "ffmpeg failed: [hevc_nvenc] Cannot load libnvidia-encode.so.1"
+
+
+def test_nvenc_probe_once_falls_back_to_exit_code_with_no_stderr(monkeypatch):
+    monkeypatch.setattr(encoder.subprocess, "run", _fake_run(137, stderr=""))
+    assert encoder._nvenc_probe_once() is False
+    assert encoder.LAST_NVENC_ERROR == "ffmpeg failed: exit code 137"
+
+
+def test_nvenc_probe_once_captures_timeout(monkeypatch):
+    def run(*a, **k):
+        raise subprocess.TimeoutExpired(cmd="ffmpeg", timeout=10)
+    monkeypatch.setattr(encoder.subprocess, "run", run)
+    assert encoder._nvenc_probe_once() is False
+    assert encoder.LAST_NVENC_ERROR == "ffmpeg timed out after 10s"
+
+
+def test_nvenc_probe_once_captures_missing_binary(monkeypatch):
+    def run(*a, **k):
+        raise FileNotFoundError()
+    monkeypatch.setattr(encoder.subprocess, "run", run)
+    assert encoder._nvenc_probe_once() is False
+    assert encoder.LAST_NVENC_ERROR == "ffmpeg is not installed in this container"
+
+
+def test_nvenc_probe_once_clears_error_on_success(monkeypatch):
+    monkeypatch.setattr(encoder, "LAST_NVENC_ERROR", "stale error from a prior probe")
+    monkeypatch.setattr(encoder.subprocess, "run", _fake_run(0))
+    assert encoder._nvenc_probe_once() is True
+    assert encoder.LAST_NVENC_ERROR is None
 
 
 def test_background_retry_loop_stops_once_available(monkeypatch):

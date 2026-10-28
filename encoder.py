@@ -15,12 +15,21 @@ logger = logging.getLogger(__name__)
 _NVENC_PROBE_RETRY_SECS = 5
 _NVENC_BACKGROUND_RETRY_SECS = 300
 
+# The specific reason the most recent probe failed (None if it succeeded, or if no
+# probe has run yet). Surfaced via /api/settings and the Settings "Recheck GPU"
+# button so a genuine failure (bad GPU passthrough, missing NVIDIA libraries in the
+# container, an NVENC session limit) is visible instead of just "not detected" —
+# the probe itself doesn't distinguish "driver still initializing" from any other
+# failure, so this is the only way to actually tell them apart.
+LAST_NVENC_ERROR: str | None = None
+
 
 def _nvenc_probe_once() -> bool:
     """Actually attempt a tiny real hevc_nvenc encode. This is the only way to tell
     whether the GPU/driver is truly usable — `ffmpeg -encoders` lists hevc_nvenc as
     soon as it was compiled in, regardless of whether a GPU is even present, since
     NVENC support is dlopen'd at encode time rather than linked at build time."""
+    global LAST_NVENC_ERROR
     try:
         r = subprocess.run(
             [
@@ -29,8 +38,21 @@ def _nvenc_probe_once() -> bool:
             ],
             capture_output=True, text=True, timeout=10,
         )
-        return r.returncode == 0
-    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        if r.returncode == 0:
+            LAST_NVENC_ERROR = None
+            return True
+        stderr = r.stderr.strip()
+        detail = stderr.splitlines()[-1] if stderr else f"exit code {r.returncode}"
+        LAST_NVENC_ERROR = f"ffmpeg failed: {detail}"
+        return False
+    except FileNotFoundError:
+        LAST_NVENC_ERROR = "ffmpeg is not installed in this container"
+        return False
+    except subprocess.TimeoutExpired:
+        LAST_NVENC_ERROR = "ffmpeg timed out after 10s"
+        return False
+    except OSError as exc:
+        LAST_NVENC_ERROR = f"Could not run ffmpeg: {exc}"
         return False
 
 
@@ -52,8 +74,8 @@ def _nvenc_available() -> bool:
     deadline = time.monotonic() + config.NVENC_PROBE_MAX_WAIT
     while time.monotonic() < deadline:
         logger.warning(
-            "GPU device present but hevc_nvenc probe failed — driver may still be "
-            "initializing, retrying in %ds", _NVENC_PROBE_RETRY_SECS,
+            "GPU device present but hevc_nvenc probe failed (%s) — driver may still "
+            "be initializing, retrying in %ds", LAST_NVENC_ERROR, _NVENC_PROBE_RETRY_SECS,
         )
         time.sleep(_NVENC_PROBE_RETRY_SECS)
         if _nvenc_probe_once():
@@ -61,9 +83,9 @@ def _nvenc_available() -> bool:
             return True
 
     logger.warning(
-        "hevc_nvenc still unavailable after %ds — falling back to CPU for now; will "
-        "keep checking every %ds in the background, or use Settings → Recheck GPU",
-        config.NVENC_PROBE_MAX_WAIT, _NVENC_BACKGROUND_RETRY_SECS,
+        "hevc_nvenc still unavailable after %ds (%s) — falling back to CPU for now; "
+        "will keep checking every %ds in the background, or use Settings → Recheck GPU",
+        config.NVENC_PROBE_MAX_WAIT, LAST_NVENC_ERROR, _NVENC_BACKGROUND_RETRY_SECS,
     )
     threading.Thread(target=_background_retry_loop, daemon=True).start()
     return False

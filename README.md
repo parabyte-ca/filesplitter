@@ -1,6 +1,6 @@
 # FileSplitter
 
-**Version 1.2.8**
+**Version 1.2.9**
 
 A self-hosted Docker service for TrueNAS (or any Linux host) that automatically indexes your media library, re-encodes video files to x265, and splits multi-scene anthology files at scene boundaries.
 
@@ -132,6 +132,8 @@ The Settings tab will show the available NVENC presets and update the quality la
 
 **If the driver is still slower than that**: the container keeps retrying every 5 minutes in the background even after giving up at boot, so it will pick the GPU up on its own without a restart — or click **Recheck GPU** next to the badge in Settings for an immediate on-demand check. For a permanent fix, enable `nvidia-persistenced` on the host (`nvidia-smi -pm 1`, or the `nvidia-persistenced` systemd service) — it keeps the driver initialized across container restarts so there's no cold-start race to begin with.
 
+**If GPU is never detected, even right after clicking Recheck GPU**: that's not a timing issue — Recheck runs one immediate probe with no retry, so a persistent failure is a real, non-transient problem (bad GPU passthrough, missing NVIDIA libraries inside the container, an NVENC session limit, etc). The actual reason ffmpeg failed now appears directly under the badge in Settings (and in the container logs) instead of just "not detected" — check that message first; it names the real cause instead of leaving you guessing.
+
 ---
 
 ## Configuration
@@ -195,6 +197,7 @@ Deleted files are moved to a `.trash` folder inside each media path (not removed
 
 | Version | Date | Notes |
 |---|---|---|
+| **1.2.9** | 2026-10-28 | GPU detection was failing with no visible reason: the NVENC probe discarded ffmpeg's actual error on failure, so "GPU not found" was all that was ever shown — including after clicking **Recheck GPU**, a single immediate probe with no retry, meaning a persistent failure there is a real problem, not a timing one. The real ffmpeg error (bad passthrough, missing NVIDIA libraries, a session limit, etc.) now shows directly under the badge in Settings and in the container logs |
 | **1.2.8** | 2026-10-28 | The 1.2.7 health-check fix didn't take effect on the very upgrade that installed it: `update.sh` rewrites itself via `git checkout`/`git pull` partway through its own run, and a bash process reading a script file isn't guaranteed to see that change for the rest of its own execution — so the *old*, pre-upgrade health-check logic kept governing the rest of that run (reproduced directly: an external mid-script rewrite can even corrupt a running interpreter's read position and crash it outright). `update.sh` now re-execs a fresh copy of itself immediately after the git step, guaranteeing every step from the build onward — including the health check — runs the just-checked-out version's own code |
 | **1.2.7** | 2026-10-28 | Fix a self-inflicted regression from 1.2.5: `update.sh`'s own post-deploy health check only waited 60s before declaring the new container unhealthy and rolling back — but 1.2.5 raised the GPU probe's boot-time window to up to 120s, so a GPU install whose driver needed the full retry window would have a perfectly good upgrade rolled back just for taking "too long" to report healthy. `update.sh`'s health-check budget is now 180s, matching the Dockerfile/docker-compose.yml `HEALTHCHECK start_period` with margin |
 | **1.2.6** | 2026-10-27 | Fix in-app upgrades failing for any install with local `docker-compose.yml` edits (e.g. the GPU deploy block): `update.sh`'s `--version X.Y.Z` path — the only thing the in-app Upgrade button ever runs — never stashed local changes before `git checkout`, so it would refuse to run and the upgrade would fail every time. Now stashes before the checkout and restores after, matching the plain `./update.sh` path's existing behavior |
