@@ -28,12 +28,18 @@ def _nvenc_probe_once() -> bool:
     """Actually attempt a tiny real hevc_nvenc encode. This is the only way to tell
     whether the GPU/driver is truly usable — `ffmpeg -encoders` lists hevc_nvenc as
     soon as it was compiled in, regardless of whether a GPU is even present, since
-    NVENC support is dlopen'd at encode time rather than linked at build time."""
+    NVENC support is dlopen'd at encode time rather than linked at build time.
+
+    256x256 (not something tiny like 64x64): NVENC hardware itself rejects frames
+    below roughly 145x145 ("Frame Dimension less than the minimum supported value"),
+    varying by driver/GPU generation — a too-small probe frame reads as "no GPU" on
+    hardware that works perfectly fine for every real encode job, which never uses
+    anywhere near so small a resolution."""
     global LAST_NVENC_ERROR
     try:
         r = subprocess.run(
             [
-                "ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=black:s=64x64:d=0.1",
+                "ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=black:s=256x256:d=0.1",
                 "-c:v", "hevc_nvenc", "-frames:v", "1", "-f", "null", "-",
             ],
             capture_output=True, text=True, timeout=10,
