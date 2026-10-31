@@ -540,6 +540,17 @@
       </div>
 
       <div class="card" style="margin-top:24px">
+        <div class="section-title">Backup</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:12px">
+          Downloads a ZIP with a consistent snapshot of the database (files, jobs, and all
+          settings) plus a human-readable settings.json. Safe to run anytime, even while jobs
+          are running.
+        </div>
+        <button class="btn btn-primary" id="btn-download-backup">Download Backup</button>
+        <span id="backup-msg" style="margin-left:8px;font-size:12px"></span>
+      </div>
+
+      <div class="card" style="margin-top:24px">
         <div class="section-title">Updates</div>
 
         <div class="settings-grid" style="margin-top:12px">
@@ -1545,6 +1556,37 @@ document.getElementById('btn-set-saved').onclick = () => {
 
 document.getElementById('btn-reset-saved').onclick = () => {
   if (confirm('Reset Space Saved counter to 0?')) _setSavedBytes(0);
+};
+
+document.getElementById('btn-download-backup').onclick = async () => {
+  const btn = document.getElementById('btn-download-backup');
+  const msg = document.getElementById('backup-msg');
+  btn.disabled = true;
+  msg.style.color = 'var(--muted)';
+  msg.textContent = 'Preparing backup…';
+  try {
+    const r = await fetch('/api/backup');
+    if (!r.ok) throw new Error('status ' + r.status);
+    const blob = await r.blob();
+    const disposition = r.headers.get('Content-Disposition') || '';
+    const match = disposition.match(/filename="?([^";]+)"?/);
+    const filename = match ? match[1] : 'filesplitter-backup.zip';
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    msg.style.color = 'var(--green)';
+    msg.textContent = `Downloaded ${filename}`;
+  } catch (e) {
+    msg.style.color = 'var(--red)';
+    msg.textContent = 'Backup failed — see server logs.';
+  } finally {
+    btn.disabled = false;
+  }
 };
 
 async function loadTrashStats() {
