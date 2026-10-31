@@ -1,6 +1,6 @@
 # FileSplitter
 
-**Version 1.2.10**
+**Version 1.3.0**
 
 A self-hosted Docker service for TrueNAS (or any Linux host) that automatically indexes your media library, re-encodes video files to x265, and splits multi-scene anthology files at scene boundaries.
 
@@ -187,7 +187,7 @@ Then run `./update.sh`.
 
 ## Data
 
-The SQLite database is stored at `./data/filesplitter.db` on the host (mounted into the container). Backups are as simple as copying that file.
+The SQLite database is stored at `./data/filesplitter.db` on the host (mounted into the container). The Settings tab's **Backup** card downloads a ZIP with a consistent snapshot of the database (files, jobs, and all settings) plus a human-readable `settings.json`, generated via `VACUUM INTO` so it's safe to run anytime — even with jobs actively running — unlike copying `filesplitter.db` directly, which can catch the file mid-write under WAL mode and produce an inconsistent copy.
 
 Deleted files are moved to a `.trash` folder inside each media path (not removed from disk), and are purged automatically after 30 days. The Settings tab's **Trash** card shows how much space is currently in `.trash` and has an **Empty Trash** button to purge everything immediately instead of waiting.
 
@@ -197,6 +197,7 @@ Deleted files are moved to a `.trash` folder inside each media path (not removed
 
 | Version | Date | Notes |
 |---|---|---|
+| **1.3.0** | 2026-10-31 | Feature: one-click **Backup** button in Settings — downloads a ZIP with a consistent database snapshot (`VACUUM INTO`, safe to run while jobs are active) plus a human-readable `settings.json`, via a new `GET /api/backup` route |
 | **1.2.10** | 2026-10-30 | Found the actual reason GPU detection kept failing on otherwise-working hardware, now that 1.2.9's error-surfacing made it visible: the NVENC probe tested a 64×64 frame, but NVENC hardware itself rejects frames below roughly 145×145 ("Frame Dimension less than the minimum supported value", varies by driver/GPU). The probe now uses 256×256 — a GPU that's actually fine no longer reads as "not detected" just because the test frame was too small to encode |
 | **1.2.9** | 2026-10-28 | GPU detection was failing with no visible reason: the NVENC probe discarded ffmpeg's actual error on failure, so "GPU not found" was all that was ever shown — including after clicking **Recheck GPU**, a single immediate probe with no retry, meaning a persistent failure there is a real problem, not a timing one. The real ffmpeg error (bad passthrough, missing NVIDIA libraries, a session limit, etc.) now shows directly under the badge in Settings and in the container logs |
 | **1.2.8** | 2026-10-28 | The 1.2.7 health-check fix didn't take effect on the very upgrade that installed it: `update.sh` rewrites itself via `git checkout`/`git pull` partway through its own run, and a bash process reading a script file isn't guaranteed to see that change for the rest of its own execution — so the *old*, pre-upgrade health-check logic kept governing the rest of that run (reproduced directly: an external mid-script rewrite can even corrupt a running interpreter's read position and crash it outright). `update.sh` now re-execs a fresh copy of itself immediately after the git step, guaranteeing every step from the build onward — including the health check — runs the just-checked-out version's own code |

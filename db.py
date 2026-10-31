@@ -443,6 +443,14 @@ def set_setting(key: str, value: str) -> None:
         )
 
 
+def backup_to(path: str) -> None:
+    """Write a consistent snapshot of the live database to `path` via VACUUM INTO —
+    safe to call while the app is running (WAL mode), unlike copying the file
+    directly. `path` must not already exist; VACUUM INTO refuses to overwrite."""
+    with connect() as conn:
+        conn.execute("VACUUM INTO ?", (path,))
+
+
 def increment_saved_bytes(amount: int) -> None:
     with connect() as conn:
         conn.execute(

@@ -1,10 +1,14 @@
 import hmac
+import io
 import ipaddress
 import json
 import logging
 import os
+import tempfile
 import time
 import threading
+import zipfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 from flask import (Flask, jsonify, render_template, render_template_string,
@@ -504,10 +508,9 @@ def api_resume():
     return jsonify({"ok": True, "paused": False})
 
 
-@app.get("/api/settings")
-def api_get_settings():
+def _settings_dict() -> dict:
     import encoder as _enc
-    return jsonify({
+    return {
         "media_paths": config.MEDIA_PATHS,
         "scene_threshold": config.SCENE_THRESHOLD,
         "min_scene_duration": config.MIN_SCENE_DURATION,
@@ -536,7 +539,40 @@ def api_get_settings():
         "split_episode_count": config.SPLIT_EPISODE_COUNT,
         "app_source_url": config.APP_SOURCE_URL,
         "app_update_check": config.APP_UPDATE_CHECK,
-    })
+    }
+
+
+@app.get("/api/settings")
+def api_get_settings():
+    return jsonify(_settings_dict())
+
+
+@app.get("/api/backup")
+def api_backup():
+    """Downloads a ZIP containing a consistent database snapshot (VACUUM INTO, safe
+    to take while the app is running) plus a human-readable settings.json — the
+    settings table's values are already inside the database, but most of them are
+    also only ever reachable there via SQL; this makes them inspectable/portable
+    without needing any tools beyond a text editor."""
+    tmp_fd, tmp_db_path = tempfile.mkstemp(suffix=".db")
+    os.close(tmp_fd)
+    os.unlink(tmp_db_path)  # VACUUM INTO refuses to write to a file that already exists
+    try:
+        db.backup_to(tmp_db_path)
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.write(tmp_db_path, "filesplitter.db")
+            zf.writestr("settings.json", json.dumps(_settings_dict(), indent=2))
+        buf.seek(0)
+    finally:
+        if os.path.exists(tmp_db_path):
+            os.unlink(tmp_db_path)
+
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+    return send_file(
+        buf, mimetype="application/zip", as_attachment=True,
+        download_name=f"filesplitter-backup-{stamp}.zip",
+    )
 
 
 @app.post("/api/encoder/recheck-gpu")
