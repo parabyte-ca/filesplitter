@@ -1,3 +1,18 @@
+> [!WARNING]
+> **FileSplitter is retired, and this repository is archived (read-only).**
+> It's now part of **[ScreenMate](https://github.com/parabyte-ca/screenmate)**, which combines AuTorrent (finding and downloading) and FileSplitter (encoding, splitting, trimming) in one app. ScreenMate also adds an auto pipeline, Rename & organise for Plex, music, and Plex ratings and collections.
+>
+> **Moving over**
+> 1. Install ScreenMate: clone `parabyte-ca/screenmate` and run `sudo ./setup.sh`. It uses port 4260 by default, so it can run next to FileSplitter.
+> 2. In ScreenMate, open **Settings → Data management → Import from AuTorrent / FileSplitter** and upload your `filesplitter.db` (it's in this app's `data` folder). Settings and history come across; secrets don't, so re-enter them.
+> 3. Check that everything looks right, then stop and remove the old container: `docker stop filesplitter && docker rm filesplitter`.
+>
+> No more updates or fixes will be made here.
+
+---
+
+## Original README
+
 # FileSplitter
 
 **Version 1.3.0**
